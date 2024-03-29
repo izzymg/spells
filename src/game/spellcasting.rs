@@ -7,6 +7,8 @@ use bevy::{
     time::{Time, Timer},
 };
 
+use crate::game::health::HealthTickSingle;
+
 use super::resources;
 
 /// Marks as currently casting a spell.
@@ -15,6 +17,7 @@ use super::resources;
 pub struct Casting {
     pub spellbook_index: usize,
     pub cast_timer: Timer,
+    pub target: Entity,
 }
 
 /// Marks as having spells which can be cast.
@@ -44,12 +47,15 @@ pub fn spell_cast_system(
 
         if casting.cast_timer.finished() {
             commands.entity(entity).remove::<Casting>();
-            println!("spell cast system: CASTED: {}", casting_spell.name)
+            commands.entity(casting.target).insert(HealthTickSingle(casting_spell.hit_points));
+            println!("E{} casted {} -> E{}", entity.index(), casting_spell.name, casting.target.index())
         } else {
             casting.cast_timer.tick(time.delta());
             println!(
-                "spell cast system: CASTING: {} {}",
+                "E{} casting {} -> E{} ({})",
+                entity.index(),
                 casting_spell.name,
+                casting.target.index(),
                 casting.cast_timer.elapsed_secs()
             )
         }

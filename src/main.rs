@@ -1,15 +1,11 @@
 mod game;
 
+use std::time::Duration;
+
 use bevy::prelude::*;
+use game::health::HealthTickSingle;
 
-mod health {
-    use bevy::ecs::component::Component;
-
-    #[derive(Debug, Component)]
-    pub struct Damageable {
-        pub hit_points: i64,
-    }
-}
+use crate::game::health::Health;
 
 fn startup(mut commands: Commands, spell_list: Res<game::resources::SpellList>) {
 
@@ -17,31 +13,37 @@ fn startup(mut commands: Commands, spell_list: Res<game::resources::SpellList>) 
         spellbook: [0, 1].to_vec(),
     };
 
-    let casting_spell = spell_list.get_spell(
-        spellcaster.get_spellbook_spell(0),
+    let casting_spell = spell_list.get_spell(spellcaster.get_spellbook_spell(0));
+
+    println!(
+        "creating spellcaster to cast {} for {:?}",
+        casting_spell.name, casting_spell.cast_time
     );
 
-    println!("creating spellcaster to cast {} for {:?}", casting_spell.name, casting_spell.cast_time);
-
+    let target_entity = commands.spawn(Health(5));
     let casting = game::spellcasting::Casting {
         cast_timer: Timer::new(casting_spell.cast_time, TimerMode::Once),
         spellbook_index: 0,
+        target: target_entity.id(),
     };
 
-    commands.spawn(
-        (
-        spellcaster,
-        casting,
-    ));
+    commands.spawn((spellcaster, casting));
 }
 
 fn main() {
-    let spells = game::resources::get_spell_list_resource();
-
     App::new()
         .add_plugins(MinimalPlugins)
-        .insert_resource(game::resources::SpellList(spells))
+        .insert_resource(game::resources::get_spell_list_resource())
+        .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(500)))
         .add_systems(Startup, startup)
-        .add_systems(Update, game::spellcasting::spell_cast_system)
+        .add_systems(
+            FixedUpdate,
+            (
+                game::health::death_system,
+                game::health::health_tick_system.before(game::health::death_system),
+                game::spellcasting::spell_cast_system,
+                game::cleanup::cleanup_system::<HealthTickSingle>
+            ),
+        )
         .run();
 }
