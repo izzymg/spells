@@ -1,8 +1,7 @@
 use std::time::Duration;
-
 use bevy::ecs::system::Resource;
 
-use crate::spells;
+use super::spells;
 
 #[derive(Resource)]
 pub struct SpellList(pub Vec<spells::Spell>);
