@@ -13,7 +13,7 @@ fn startup(mut commands: Commands, spell_list: Res<game::resources::SpellList>) 
         spellbook: [0, 1].to_vec(),
     };
 
-    let casting_spell = spell_list.get_spell(spellcaster.get_spellbook_spell(0));
+    let casting_spell = spell_list.get_spell(spellcaster.get_spellbook_spell(0).unwrap()).unwrap();
 
     debug!(
         "creating spellcaster to cast {} for {:?}",

@@ -22,8 +22,7 @@ pub fn get_spell_list_resource() -> SpellList {
 }
 
 impl SpellList {
-    // todo: add error
-    pub fn get_spell(&self, i: usize) -> &spells::Spell {
-        &self.0[i]
+    pub fn get_spell(&self, i: usize) -> Option<&spells::Spell> {
+        self.0.get(i) 
     }
 }

@@ -3,7 +3,9 @@ use bevy::{
         component::Component,
         entity::Entity,
         system::{Commands, Query, Res},
-    }, log::debug, time::{Time, Timer}
+    },
+    log::{debug, error},
+    time::{Time, Timer},
 };
 
 use crate::game::health::HealthTickSingle;
@@ -27,9 +29,8 @@ pub struct Spellcaster {
 }
 
 impl Spellcaster {
-    // todo: add error
-    pub fn get_spellbook_spell(&self, i: usize) -> usize {
-        self.spellbook[i]
+    pub fn get_spellbook_spell(&self, i: usize) -> Option<usize> {
+        self.spellbook.get(i).copied()
     }
 }
 
@@ -40,14 +41,20 @@ pub fn spell_cast_system(
     mut query: Query<(Entity, &Spellcaster, &mut Casting)>,
 ) {
     for (entity, caster, mut casting) in query.iter_mut() {
-        let spell = caster.get_spellbook_spell(casting.spellbook_index);
-        let casting_spell = spell_list.get_spell(spell);
-
+        casting.cast_timer.tick(time.delta());
         if casting.cast_timer.finished() {
-            commands.entity(entity).remove::<Casting>();
-            commands.entity(casting.target).insert(HealthTickSingle(casting_spell.hit_points));
-        } else {
-            casting.cast_timer.tick(time.delta());
+            match caster.get_spellbook_spell(casting.spellbook_index) {
+                Some(spellbook_id) => match spell_list.get_spell(spellbook_id) {
+                    Some(spell) => {
+                        commands.entity(entity).remove::<Casting>();
+                        commands
+                            .entity(casting.target)
+                            .insert(HealthTickSingle(spell.hit_points));
+                    }
+                    None => error!("no spell id {}", spellbook_id),
+                },
+                None => error!("spellbook did not contain {}", casting.spellbook_index),
+            }
         }
     }
 }
@@ -57,8 +64,8 @@ pub fn debug_spell_cast_system(
     mut query: Query<(Entity, &Spellcaster, &Casting)>,
 ) {
     for (entity, caster, casting) in query.iter_mut() {
-        let spell = caster.get_spellbook_spell(casting.spellbook_index);
-        let casting_spell = spell_list.get_spell(spell);
+        let spell = caster.get_spellbook_spell(casting.spellbook_index).unwrap();
+        let casting_spell = spell_list.get_spell(spell).unwrap();
         debug!(
             "E{} casting {} -> E{} ({}/{}s)",
             entity.index(),
