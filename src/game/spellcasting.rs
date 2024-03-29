@@ -3,8 +3,7 @@ use bevy::{
         component::Component,
         entity::Entity,
         system::{Commands, Query, Res},
-    },
-    time::{Time, Timer},
+    }, log::debug, time::{Time, Timer}
 };
 
 use crate::game::health::HealthTickSingle;
@@ -42,22 +41,31 @@ pub fn spell_cast_system(
 ) {
     for (entity, caster, mut casting) in query.iter_mut() {
         let spell = caster.get_spellbook_spell(casting.spellbook_index);
-
         let casting_spell = spell_list.get_spell(spell);
 
         if casting.cast_timer.finished() {
             commands.entity(entity).remove::<Casting>();
             commands.entity(casting.target).insert(HealthTickSingle(casting_spell.hit_points));
-            println!("E{} casted {} -> E{}", entity.index(), casting_spell.name, casting.target.index())
         } else {
             casting.cast_timer.tick(time.delta());
-            println!(
-                "E{} casting {} -> E{} ({})",
-                entity.index(),
-                casting_spell.name,
-                casting.target.index(),
-                casting.cast_timer.elapsed_secs()
-            )
         }
+    }
+}
+
+pub fn debug_spell_cast_system(
+    spell_list: Res<resources::SpellList>,
+    mut query: Query<(Entity, &Spellcaster, &Casting)>,
+) {
+    for (entity, caster, casting) in query.iter_mut() {
+        let spell = caster.get_spellbook_spell(casting.spellbook_index);
+        let casting_spell = spell_list.get_spell(spell);
+        debug!(
+            "E{} casting {} -> E{} ({}/{}s)",
+            entity.index(),
+            casting_spell.name,
+            casting.target.index(),
+            casting.cast_timer.elapsed_secs(),
+            casting_spell.cast_time.as_secs_f32()
+        )
     }
 }
