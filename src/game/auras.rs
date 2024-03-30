@@ -13,40 +13,10 @@ use bevy::{
     time::{Time, Timer},
 };
 
-use super::resources::AuraList;
+use self::resource::AuraList;
 
-#[derive(Component)]
-pub struct Aura {
-    aura_id: usize,
-    timer: Timer,
-}
+mod resource;
 
-impl Aura {
-    pub fn get_time_remaining(&self, duration: Duration) -> Duration {
-        duration - self.timer.elapsed()
-    }
-}
-
-pub enum AuraType {
-    THORNS,
-    SHIELD,
-}
-
-pub struct AuraData {
-    pub name: String,
-    pub duration: Duration,
-    pub aura_type: AuraType,
-}
-
-impl AuraData {
-    pub fn new(name: String, duration: u64, aura_type: AuraType) -> AuraData {
-        AuraData {
-            name,
-            duration: Duration::from_millis(duration),
-            aura_type,
-        }
-    }
-}
 
 #[derive(Event)]
 pub struct AddAuraEvent {
@@ -58,6 +28,40 @@ pub struct AddAuraEvent {
 pub struct RemoveAuraEvent {
     pub entity: Entity,
     pub aura_id: usize,
+}
+
+#[derive(Component)]
+struct Aura {
+    aura_id: usize,
+    timer: Timer,
+}
+
+impl Aura {
+    fn get_time_remaining(&self, duration: Duration) -> Duration {
+        duration - self.timer.elapsed()
+    }
+}
+
+enum AuraType {
+    DOT,
+    SHIELD,
+    THORNS,
+}
+
+struct AuraData {
+    pub name: String,
+    pub duration: Duration,
+    pub aura_type: AuraType,
+}
+
+impl AuraData {
+    fn new(name: String, duration: u64, aura_type: AuraType) -> AuraData {
+        AuraData {
+            name,
+            duration: Duration::from_millis(duration),
+            aura_type,
+        }
+    }
 }
 
 // spawn auras as children of given entity
@@ -146,7 +150,9 @@ fn debug_aura_system(aura_list: Res<AuraList>, query: Query<(Entity, &Aura)>) {
 pub struct AurasPlugin;
 impl Plugin for AurasPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_event::<AddAuraEvent>()
+        app
+            .insert_resource(resource::get_aura_list_resource())
+            .add_event::<AddAuraEvent>()
             .add_event::<RemoveAuraEvent>()
             .add_systems(
                 FixedUpdate,

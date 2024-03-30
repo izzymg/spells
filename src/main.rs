@@ -3,22 +3,21 @@ mod game;
 use std::time::Duration;
 
 use bevy::{log::LogPlugin, prelude::*};
-use game::{auras, health, spellcasting};
+use game::{auras, health, spells};
 
 // create entities
 fn startup(
     mut commands: Commands,
-    mut ev_w_spellcasting: EventWriter<spellcasting::StartCastingEvent>,
+    mut ev_w_spellcasting: EventWriter<spells::StartCastingEvent>,
     mut ev_w_aura_add: EventWriter<auras::AddAuraEvent>,
 ) {
     let target = commands.spawn(health::Health(50)).id();
 
-    let caster = commands.spawn((
-        health::Health(50),
-        spellcasting::Spellcaster{},
-    )).id();
+    let caster = commands
+        .spawn((health::Health(50), spells::Spellcaster {}))
+        .id();
 
-    ev_w_spellcasting.send(spellcasting::StartCastingEvent {
+    ev_w_spellcasting.send(spells::StartCastingEvent {
         entity: caster,
         target,
         spell_id: 1,
@@ -28,32 +27,22 @@ fn startup(
         entity: target,
         aura_id: 0,
     });
-
 }
 fn main() {
     App::new()
-        .add_plugins((MinimalPlugins, LogPlugin {
-            filter: "spells=debug".into(),
-            level: bevy::log::Level::DEBUG, 
-            update_subscriber: None,
-        }))
-        .insert_resource(game::resources::get_spell_list_resource())
-        .insert_resource(game::resources::get_aura_list_resource())
-        .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(500)))
-        .add_event::<spellcasting::StartCastingEvent>()
-        .add_event::<health::HealthTickEvent>()
-        .add_systems(Startup, startup)
-        .add_systems(
-            FixedUpdate,
-            (
-                game::health::death_system,
-                game::health::health_tick_system.before(game::health::death_system),
-                game::spellcasting::spell_cast_system,
-                game::spellcasting::start_casting_system,
-            ),
-        )
-        .add_plugins(
+        .add_plugins((
+            MinimalPlugins,
+            LogPlugin {
+                filter: "spells=debug".into(),
+                level: bevy::log::Level::DEBUG,
+                update_subscriber: None,
+            },
             auras::AurasPlugin,
-        )
+            spells::SpellsPlugin,
+            health::HealthPlugin,
+        ))
+        .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(500)))
+        .add_plugins(())
+        .add_systems(Startup, startup)
         .run();
 }
