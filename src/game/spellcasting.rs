@@ -2,14 +2,14 @@ use std::time::Duration;
 
 use bevy::{
     ecs::{
-        component::Component, entity::Entity, event::{Event, EventReader}, query::With, system::{Commands, Query, Res}
+        component::Component, entity::Entity, event::{Event, EventReader, EventWriter}, query::With, system::{Commands, Query, Res}
     },
     log::*,
     time::{Time, Timer},
 };
 
 use super::{
-    health,
+    health::{self, HealthTickEvent},
     resources::SpellList,
 };
 
@@ -31,6 +31,7 @@ pub fn spell_cast_system(
     mut commands: Commands,
     time: Res<Time>,
     spell_list: Res<SpellList>,
+    mut ev_w: EventWriter<health::HealthTickEvent>,
     mut query: Query<(Entity, &mut CastingSpell), With<Spellcaster>>,
 ) {
     for (entity, mut casting) in query.iter_mut() {
@@ -45,7 +46,7 @@ pub fn spell_cast_system(
         if casting.cast_timer.finished() {
             commands.entity(entity).remove::<CastingSpell>();
             cast_spell(
-                &mut commands,
+                &mut ev_w,
                 &spell_list,
                 SpellCastData {
                     caster: entity,
@@ -70,20 +71,23 @@ struct SpellCastData {
 }
 
 
-fn cast_spell(commands: &mut Commands, spell_list: &Res<SpellList>, data: SpellCastData) {
+fn cast_spell(ev_w: &mut EventWriter<health::HealthTickEvent>, spell_list: &Res<SpellList>, data: SpellCastData) {
     if let Some(spell_data) = spell_list.get_spell_data(data.spell_id) {
+
         // apply target hp
         if let Some(hp) = spell_data.target_health_effect {
-            commands
-                .entity(data.target)
-                .insert(health::HealthTickSingle(hp));
+            ev_w.send(HealthTickEvent {
+                entity: data.target,
+                hp,
+            });
         }
 
         // apply self hp
         if let Some(hp) = spell_data.self_health_effect {
-            commands
-                .entity(data.caster)
-                .insert(health::HealthTickSingle(hp));
+            ev_w.send(HealthTickEvent {
+                entity: data.caster,
+                hp,
+            });
         }
     } else {
         error!("no spell at id {}", data.spell_id);
