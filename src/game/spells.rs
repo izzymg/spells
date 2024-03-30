@@ -16,7 +16,7 @@ impl SpellData {
             target_health_effect: None,
         }
     }
-    pub fn new_damage(name: String, cast_ms: u64, damage: i64) -> SpellData {
+    pub fn new_target_hp(name: String, cast_ms: u64, damage: i64) -> SpellData {
         SpellData {
             name: name,
             cast_time: Duration::from_millis(cast_ms),

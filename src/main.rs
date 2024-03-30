@@ -3,10 +3,14 @@ mod game;
 use std::time::Duration;
 
 use bevy::{log::LogPlugin, prelude::*};
-use game::{health, spellcasting};
+use game::{auras, health, spellcasting};
 
 // create entities
-fn startup(mut commands: Commands, mut ev_w: EventWriter<spellcasting::StartCastingEvent>) {
+fn startup(
+    mut commands: Commands,
+    mut ev_w_spellcasting: EventWriter<spellcasting::StartCastingEvent>,
+    mut ev_w_aura_add: EventWriter<auras::AddAuraEvent>,
+) {
     let target = commands.spawn(health::Health(50)).id();
 
     let caster = commands.spawn((
@@ -14,10 +18,15 @@ fn startup(mut commands: Commands, mut ev_w: EventWriter<spellcasting::StartCast
         spellcasting::Spellcaster{},
     )).id();
 
-    ev_w.send(spellcasting::StartCastingEvent {
+    ev_w_spellcasting.send(spellcasting::StartCastingEvent {
         entity: caster,
         target,
         spell_id: 1,
+    });
+
+    ev_w_aura_add.send(auras::AddAuraEvent {
+        entity: target,
+        aura_id: 0,
     });
 
 }
@@ -29,6 +38,7 @@ fn main() {
             update_subscriber: None,
         }))
         .insert_resource(game::resources::get_spell_list_resource())
+        .insert_resource(game::resources::get_aura_list_resource())
         .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(500)))
         .add_event::<spellcasting::StartCastingEvent>()
         .add_event::<health::HealthTickEvent>()
@@ -41,6 +51,9 @@ fn main() {
                 game::spellcasting::spell_cast_system,
                 game::spellcasting::start_casting_system,
             ),
+        )
+        .add_plugins(
+            auras::AurasPlugin,
         )
         .run();
 }
