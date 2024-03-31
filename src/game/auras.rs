@@ -1,16 +1,20 @@
+use std::time::Duration;
+
 use bevy::{
-    app::{FixedUpdate, Plugin,}, ecs::{
+    app::{FixedUpdate, Plugin}, ecs::{
         component::Component, entity::Entity, event::{Event, EventReader, EventWriter}, system::{Commands, Query, Res}
-    }, hierarchy::{Children, Parent, BuildChildren}, log, time::{self, Time, Timer}
+    }, hierarchy::{BuildChildren, Children, Parent}, log, time::{self, Time, Timer},
 };
 
 mod resource;
-mod ticking;
+mod ticking_hp;
 
 pub mod aura_types {
     /// Health Point ticks
     pub const TICKING_HP: usize = 5;
 }
+
+const AURA_TICK_RATE: Duration = Duration::from_millis(500);
 
 pub struct AurasPlugin;
 impl Plugin for AurasPlugin {
@@ -25,19 +29,21 @@ impl Plugin for AurasPlugin {
                     on_add_aura_event_system::<{aura_types::TICKING_HP}>,
                     on_remove_aura_event_system::<{aura_types::TICKING_HP}>,
                     tick_aura_system::<{aura_types::TICKING_HP}>,
-                    ticking::ticking_damage_system,
+                    ticking_hp::ticking_hp_system,
                 )
             )
         ;
     }
 }
 
+/// Add an aura to some entity
 #[derive(Event, Debug)]
 pub struct AddAuraEvent<const AURA_TYPE: usize> {
     pub target: Entity,
     pub aura_data_id: usize,
 }
 
+/// Find & remove an aura from some entity
 #[derive(Event, Debug)]
 pub struct RemoveAuraEvent<const AURA_TYPE: usize> {
     pub target: Entity,
@@ -45,13 +51,29 @@ pub struct RemoveAuraEvent<const AURA_TYPE: usize> {
 }
 
 
+/// Component to mark an entity as having an Aura of some type.
+/// Auras entities are children of their parent that "owns"/has the aura.
 #[derive(Component)]
 struct Aura<const AURA_TYPE: usize> {
+    /// Marks how long this aura lasts for.
     timer: Timer,
+    /// Repeats every (aura tick rate)
+    ticker: Timer,
+    /// For looking up aura data
     aura_data_id: usize,
 }
 
-// tick all auras of type AURA_TYPE, trigger remove event if expired
+impl<const AURA_TYPE: usize> Aura<AURA_TYPE> {
+    fn new(data_id: usize, duration: Duration) -> Aura<AURA_TYPE> {
+        Aura::<AURA_TYPE> {
+            aura_data_id: data_id,
+            timer: Timer::new(duration, time::TimerMode::Once),
+            ticker: Timer::new(AURA_TICK_RATE, time::TimerMode::Repeating)
+        }
+    }
+}
+
+/// Tick all auras of type AURA_TYPE, trigger remove event if expired
 fn tick_aura_system<const AURA_TYPE: usize>(
     time: Res<Time>,
     mut ev_w: EventWriter<RemoveAuraEvent<AURA_TYPE>>,
@@ -60,8 +82,7 @@ fn tick_aura_system<const AURA_TYPE: usize>(
     for (parent, mut aura) in query.iter_mut() {
 
         aura.timer.tick(time.delta());
-        log::debug!("aura {} ticks on {:?} ({}s)", aura.aura_data_id, parent, aura.timer.elapsed_secs());
-
+        aura.ticker.tick(time.delta());
         if aura.timer.finished() {
             ev_w.send(RemoveAuraEvent::<AURA_TYPE> {
                 target: parent.get(),
@@ -71,7 +92,7 @@ fn tick_aura_system<const AURA_TYPE: usize>(
     }
 }
 
-// spawn auras as children of given entity
+/// Spawn auras as children of given entity
 fn on_add_aura_event_system<const AURA_TYPE: usize>(
     mut commands: Commands,
     mut ev_r: EventReader<AddAuraEvent<AURA_TYPE>>,
@@ -82,10 +103,7 @@ fn on_add_aura_event_system<const AURA_TYPE: usize>(
         if let Some(aura_data) = aura_list.get_aura_data(ev.aura_data_id) {
             // create aura entity
             let aura = commands
-                .spawn(Aura::<AURA_TYPE> {
-                    aura_data_id: ev.aura_data_id,
-                    timer: Timer::new(aura_data.duration, time::TimerMode::Once),
-                })
+                .spawn(Aura::<AURA_TYPE>::new(ev.aura_data_id, aura_data.duration))
                 .id();
                 log::debug!("added aura {} to {:?}", ev.aura_data_id, ev.target);
 
@@ -97,7 +115,7 @@ fn on_add_aura_event_system<const AURA_TYPE: usize>(
     }
 }
 
-// drop aura by ID on given entity
+/// Drop aura by ID on given entity
 fn on_remove_aura_event_system<const AURA_TYPE: usize>(
     mut commands: Commands,
     mut ev_r: EventReader<RemoveAuraEvent<AURA_TYPE>>,

@@ -1,10 +1,12 @@
 use std::time::Duration;
 use bevy::ecs::system::Resource;
 
+use super::AURA_TICK_RATE;
+
 pub(super) struct AuraData {
     pub name: String,
     pub duration: Duration,
-    pub base_hp: Option<i64>,
+    pub hp_per_tick: Option<i64>,
 }
 
 impl AuraData {
@@ -12,12 +14,12 @@ impl AuraData {
         AuraData {
             name,
             duration: Duration::from_millis(duration_ms),
-            base_hp: None,
+            hp_per_tick: None,
         }
     }
 
-    fn with_hp(mut self, base_hp: i64) -> Self {
-        self.base_hp = Some(base_hp);
+    fn with_hps(mut self, per_second: i64) -> Self {
+        self.hp_per_tick = Some((AURA_TICK_RATE.as_secs_f64() * (per_second as f64)) as i64);
         self
     }
 }
@@ -33,7 +35,7 @@ impl AuraList {
 
 pub(super) fn get_aura_list_resource() -> AuraList {
     AuraList(vec![
-        AuraData::new("Immolated".into(), 2000).with_hp(-2),
-        AuraData::new("Rotting".into(), 5000).with_hp(-4),
+        AuraData::new("Immolated".into(), 5000).with_hps(-1),
+        AuraData::new("Rotting".into(), 2000).with_hps(-4),
     ])
 }
