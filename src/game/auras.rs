@@ -3,7 +3,7 @@ use std::time::Duration;
 use bevy::{
     app::{FixedUpdate, Plugin}, ecs::{
         component::Component, entity::Entity, event::{Event, EventReader, EventWriter}, system::{Commands, Query, Res}
-    }, hierarchy::{BuildChildren, Children, Parent}, log, time::{self, Time, Timer},
+    }, hierarchy::{BuildChildren, Children, DespawnRecursiveExt, Parent}, log, time::{self, Time, Timer},
 };
 
 mod tests;
@@ -102,14 +102,16 @@ fn on_add_aura_event_system<const AURA_TYPE: usize>(
     for ev in ev_r.read() {
         // find relevant aura
         if let Some(aura_data) = aura_list.get_aura_data(ev.aura_data_id) {
+            println!("adding aura");
+
             // create aura entity
             let aura = commands
                 .spawn(Aura::<AURA_TYPE>::new(ev.aura_data_id, aura_data.duration))
                 .id();
-                log::debug!("added aura {} to {:?}", ev.aura_data_id, ev.target);
-
             // aura is child of parent entity
-            commands.entity(ev.target).push_children(&[aura]);
+            commands.entity(ev.target).add_child(aura);
+
+            log::debug!("added aura {} to {:?}", ev.aura_data_id, ev.target);
         } else {
             log::error!("no aura at id {}", ev.target.index())
         }
@@ -130,8 +132,8 @@ fn on_remove_aura_event_system<const AURA_TYPE: usize>(
             if let Ok(aura) = query_auras.get(child) {
                 // find aura and remove match
                 if aura.aura_data_id == ev.aura_data_id {
-                    commands.entity(child).despawn();
-                    log::debug!("removed aura {} from {:?}", ev.aura_data_id, ev.target)
+                    commands.entity(child).despawn_recursive();
+                    log::debug!("removed aura {} from {:?}", ev.aura_data_id, ev.target);
                 }
             }
         }

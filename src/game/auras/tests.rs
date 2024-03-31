@@ -5,15 +5,13 @@ mod tests {
     use bevy::{
         app::{App, Update},
         ecs::event::Events,
-        hierarchy::BuildWorldChildren,
+        hierarchy::{BuildWorldChildren, Children},
+        utils::tracing::Event,
     };
 
     use crate::game::{
         auras::{
-            aura_types,
-            resource::{AuraData, AuraList},
-            ticking_hp::ticking_hp_system,
-            Aura, AURA_TICK_RATE,
+            aura_types, on_add_aura_event_system, on_remove_aura_event_system, resource::{AuraData, AuraList}, ticking_hp::ticking_hp_system, AddAuraEvent, Aura, RemoveAuraEvent, AURA_TICK_RATE
         },
         health::{self, Health, HealthTickEvent},
     };
@@ -48,6 +46,78 @@ mod tests {
         duration: Duration,
     }
 
+    #[test]
+    fn did_add_aura() {
+        const AURA_TYPE: usize = 50;
+        let mut app = App::new();
+        app.add_systems(Update, on_add_aura_event_system::<{ AURA_TYPE }>);
+        app.insert_resource(get_test_aura_data());
+        app.add_event::<AddAuraEvent<{ AURA_TYPE }>>();
+
+        let some_guy = app.world.spawn(Health(50)).id();
+
+        let mut res = app.world.resource_mut::<Events<AddAuraEvent<AURA_TYPE>>>();
+
+        let event_sends = 5;
+        for _ in 0..event_sends {
+            res.send(AddAuraEvent::<AURA_TYPE> {
+                aura_data_id: 0,
+                target: some_guy,
+            });
+        }
+
+
+        app.update();
+
+        let q_children = app.world.get::<Children>(some_guy);
+        // get children of some_guy
+        for &children in q_children.iter() {
+            assert_eq!(children.len(), event_sends);
+            for &child in children.iter() {
+                let q_1 = app.world.get::<Aura<AURA_TYPE>>(child);
+                assert_eq!(q_1.unwrap().aura_data_id, 0);
+            }
+        }
+
+    }
+
+    #[test]
+    fn did_remove_aura() {
+        const AURA_TYPE: usize = 50;
+        let mut app = App::new();
+        app.add_systems(Update, (on_add_aura_event_system::<{ AURA_TYPE }>, on_remove_aura_event_system::<{ AURA_TYPE }>));
+        app.insert_resource(get_test_aura_data());
+        app.add_event::<AddAuraEvent<{ AURA_TYPE }>>();
+        app.add_event::<RemoveAuraEvent<{ AURA_TYPE }>>();
+
+        let some_guy = app.world.spawn(Health(50)).id();
+
+        let mut add_aura = app.world.resource_mut::<Events<AddAuraEvent<AURA_TYPE>>>();
+        let event_sends = 5;
+        for _ in 0..event_sends {
+            add_aura.send(AddAuraEvent::<AURA_TYPE> {
+                aura_data_id: 0,
+                target: some_guy,
+            });
+        }
+        app.update();
+
+        let mut remove_aura = app.world.resource_mut::<Events<RemoveAuraEvent<AURA_TYPE>>>();
+        for _ in 0..event_sends {
+            remove_aura.send(RemoveAuraEvent::<AURA_TYPE> {
+                aura_data_id: 0,
+                target: some_guy,
+            });
+        }
+        app.update();
+
+        let q_children = app.world.get::<Children>(some_guy);
+        // get children of some_guy
+        for &children in q_children.iter() {
+            assert_eq!(children.len(), 0);
+        }
+    }
+
     // our hp tick system should trigger an HP tick event each time the aura's ticker advances by AURA_TICK_RATE
     #[test]
     fn did_trigger_hp_tick() {
@@ -73,10 +143,7 @@ mod tests {
             // spawn mob with ticking HP aura
             let auras = app
                 .world
-                .spawn(Aura::<{ aura_types::TICKING_HP }>::new(
-                    i,
-                    test.duration,
-                ))
+                .spawn(Aura::<{ aura_types::TICKING_HP }>::new(i, test.duration))
                 .id();
             let mob = app.world.spawn(Health(STARTING_HP)).id();
             app.world.entity_mut(mob).add_child(auras);
@@ -100,6 +167,5 @@ mod tests {
 
             app.world.despawn(mob);
         }
-
     }
 }
