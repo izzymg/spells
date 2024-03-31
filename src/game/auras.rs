@@ -6,6 +6,7 @@ use bevy::{
     }, hierarchy::{BuildChildren, Children, Parent}, log, time::{self, Time, Timer},
 };
 
+mod tests;
 mod resource;
 mod ticking_hp;
 
