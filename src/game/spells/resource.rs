@@ -15,7 +15,7 @@ pub(super) fn get_spell_list_resource() -> SpellList {
     SpellList(
         vec![
             SpellData::new_target_hp("Fire Ball".into(), 2500, -55),
-            SpellData::new_target_hp("Frost Ball".into(), 4000, -155),
+            SpellData::new_target_hp("Frost Ball".into(), 4000, -15),
             SpellData::new("Dummy 1".into(), 5,),
         ]
     )

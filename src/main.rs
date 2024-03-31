@@ -9,7 +9,7 @@ use game::{auras, health, spells};
 fn startup(
     mut commands: Commands,
     mut ev_w_spellcasting: EventWriter<spells::StartCastingEvent>,
-    mut ev_w_aura_add: EventWriter<auras::AddAuraEvent>,
+    mut ev_w_aura_add: EventWriter<auras::AddAuraEvent<{auras::AURA_TYPE_TICKING_HP}>>,
 ) {
     let target = commands.spawn(health::Health(50)).id();
 
@@ -23,9 +23,9 @@ fn startup(
         spell_id: 1,
     });
 
-    ev_w_aura_add.send(auras::AddAuraEvent {
-        entity: target,
-        aura_id: 0,
+    ev_w_aura_add.send(auras::AddAuraEvent::<{auras::AURA_TYPE_TICKING_HP}> {
+        target,
+        aura_data_id: 0,
     });
 }
 fn main() {
@@ -41,7 +41,7 @@ fn main() {
             spells::SpellsPlugin,
             health::HealthPlugin,
         ))
-        .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(500)))
+        .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(5500)))
         .add_plugins(())
         .add_systems(Startup, startup)
         .run();
