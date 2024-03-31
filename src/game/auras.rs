@@ -102,8 +102,6 @@ fn on_add_aura_event_system<const AURA_TYPE: usize>(
     for ev in ev_r.read() {
         // find relevant aura
         if let Some(aura_data) = aura_list.get_aura_data(ev.aura_data_id) {
-            println!("adding aura");
-
             // create aura entity
             let aura = commands
                 .spawn(Aura::<AURA_TYPE>::new(ev.aura_data_id, aura_data.duration))
