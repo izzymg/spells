@@ -1,5 +1,4 @@
 use std::time::Duration;
-
 use bevy::ecs::system::Resource;
 
 pub(super) struct AuraData {

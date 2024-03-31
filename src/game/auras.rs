@@ -4,24 +4,28 @@ use bevy::{
     }, hierarchy::{Children, Parent, BuildChildren}, log, time::{self, Time, Timer}
 };
 
-use super::health::{self, HealthTickEvent};
 mod resource;
-pub const AURA_TYPE_TICKING_HP: usize = 5;
+mod ticking;
+
+pub mod aura_types {
+    /// Health Point ticks
+    pub const TICKING_HP: usize = 5;
+}
 
 pub struct AurasPlugin;
 impl Plugin for AurasPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app
             .insert_resource(resource::get_aura_list_resource())
-            .add_event::<AddAuraEvent::<AURA_TYPE_TICKING_HP>>()
-            .add_event::<RemoveAuraEvent::<AURA_TYPE_TICKING_HP>>()
+            .add_event::<AddAuraEvent::<{aura_types::TICKING_HP}>>()
+            .add_event::<RemoveAuraEvent::<{aura_types::TICKING_HP}>>()
             .add_systems(
                 FixedUpdate,
                 (
-                    on_add_aura_event_system::<AURA_TYPE_TICKING_HP>,
-                    on_remove_aura_event_system::<AURA_TYPE_TICKING_HP>,
-                    tick_aura_system::<AURA_TYPE_TICKING_HP>,
-                    ticking_damage_system,
+                    on_add_aura_event_system::<{aura_types::TICKING_HP}>,
+                    on_remove_aura_event_system::<{aura_types::TICKING_HP}>,
+                    tick_aura_system::<{aura_types::TICKING_HP}>,
+                    ticking::ticking_damage_system,
                 )
             )
         ;
@@ -115,17 +119,3 @@ fn on_remove_aura_event_system<const AURA_TYPE: usize>(
     }
 }
 
-// process ticking damage auras
-fn ticking_damage_system(
-    aura_list: Res<resource::AuraList>,
-    mut ev_w: EventWriter<health::HealthTickEvent>,
-    query: Query<(&Parent, &Aura<AURA_TYPE_TICKING_HP>)>
-) {
-    for (parent, burning_aura) in query.iter() {
-        let aura_data = aura_list.get_aura_data(burning_aura.aura_data_id).unwrap();
-        ev_w.send(HealthTickEvent {
-            entity: parent.get(),
-            hp: aura_data.base_hp.unwrap_or(0),
-        });
-    }
-}
