@@ -92,24 +92,24 @@ mod tests {
 
         let some_guy = app.world.spawn(Health(50)).id();
 
-        let mut add_aura = app.world.resource_mut::<Events<AddAuraEvent<AURA_TYPE>>>();
         let event_sends = 5;
         for _ in 0..event_sends {
+            let mut add_aura = app.world.resource_mut::<Events<AddAuraEvent<AURA_TYPE>>>();
             add_aura.send(AddAuraEvent::<AURA_TYPE> {
                 aura_data_id: 0,
                 target: some_guy,
             });
+            app.update();
         }
-        app.update();
 
-        let mut remove_aura = app.world.resource_mut::<Events<RemoveAuraEvent<AURA_TYPE>>>();
         for _ in 0..event_sends {
+            let mut remove_aura = app.world.resource_mut::<Events<RemoveAuraEvent<AURA_TYPE>>>();
             remove_aura.send(RemoveAuraEvent::<AURA_TYPE> {
                 aura_data_id: 0,
                 target: some_guy,
             });
+            app.update();
         }
-        app.update();
 
         let q_children = app.world.get::<Children>(some_guy);
         // get children of some_guy

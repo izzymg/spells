@@ -125,7 +125,7 @@ fn on_remove_aura_event_system<const AURA_TYPE: usize>(
     query: Query<&Children>,
     query_auras: Query<&Aura<AURA_TYPE>>,
 ) {
-    for ev in ev_r.read() {
+    'processing: for ev in ev_r.read() {
         // get all child entities of our parent
         for &child in query.get(ev.target).unwrap().iter() {
             // for every aura child
@@ -134,6 +134,7 @@ fn on_remove_aura_event_system<const AURA_TYPE: usize>(
                 if aura.aura_data_id == ev.aura_data_id {
                     commands.entity(child).despawn_recursive();
                     log::debug!("removed aura {} from {:?}", ev.aura_data_id, ev.target);
+                    continue 'processing;
                 }
             }
         }
