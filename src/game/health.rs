@@ -81,7 +81,7 @@ fn health_tick_system(
             }
 
             health.hp += damage;
-            log::debug!("{:?} ticked for {}, hp: {}", ev.entity, damage, health.hp);
+            log::debug!("{:?} ticked for {} ({} apl), hp: {}", ev.entity, damage, ev.hp, health.hp);
         }
     }
 }

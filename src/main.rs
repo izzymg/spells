@@ -3,29 +3,24 @@ mod game;
 // use std::time::Duration;
 
 use bevy::{log::LogPlugin, prelude::*};
-use game::{status_effect, health, spells};
+use game::{health, spells::{self, StartCastingEvent}, status_effect};
 
 // create entities
 fn startup(
     mut commands: Commands,
-    mut ev_w_aura_add: EventWriter<status_effect::AddStatusEffectEvent>,
+    mut start_casting_write: EventWriter<spells::StartCastingEvent>,
 ) {
     let guy = commands
         .spawn(health::Health::new(50))
         .id();
 
-    ev_w_aura_add.send(status_effect::AddStatusEffectEvent {
-        target_entity: guy,
-        status_id: 0,
-    });
-    ev_w_aura_add.send(status_effect::AddStatusEffectEvent {
-        target_entity: guy,
-        status_id: 1,
-    });
-    ev_w_aura_add.send(status_effect::AddStatusEffectEvent {
-        target_entity: guy,
-        status_id: 1,
-    });
+    let target = commands
+        .spawn(health::Health::new(50))
+        .id();
+
+
+    start_casting_write.send(StartCastingEvent::new(guy, target, 0));
+    start_casting_write.send(StartCastingEvent::new(target, target, 1));
 }
 fn main() {
     App::new()
