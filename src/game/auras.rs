@@ -13,36 +13,36 @@ use bevy::{
     time::{Time, Timer, TimerMode},
 };
 
-use self::{shield::{ShieldDamageEvent, StatusShield}, ticking_hp::StatusTickingHP};
+use self::{shield::{ShieldDamageEvent, StatusShield}, ticking_hp::AuraTickingHealth};
 
 mod resource;
 pub mod shield;
 pub mod ticking_hp;
 
-/// Possible status effect types
+/// Possible aura types
 enum StatusEffectType {
     TickingHP,
     Shield,
 }
 
-///T his entity has a status effect, we can look up its complex data
+///T his entity has a aura, we can look up its complex data
 #[derive(Component)]
-pub struct StatusEffect {
+pub struct Aura {
     pub id: usize,
     pub duration: Timer,
     pub owner: Entity,
 }
 
-impl StatusEffect {
+impl Aura {
     pub fn get_remaining_time(&self, max_duration: Duration) -> Duration {
         max_duration - self.duration.elapsed()
     }
 }
 
-/// Tick status effects & remove expired
-fn tick_status_effects_system(
+/// Tick auras & remove expired
+fn tick_auras_system(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut StatusEffect)>,
+    mut query: Query<(Entity, &mut Aura)>,
     time: Res<Time>,
 ) {
     for (entity, mut effect) in query.iter_mut() {
@@ -53,62 +53,62 @@ fn tick_status_effects_system(
     }
 }
 
-/// Request to add a status effect child to the given entity
+/// Request to add a aura child to the given entity
 #[derive(Event, Debug)]
-pub struct AddStatusEffectEvent {
-    pub status_id: usize,
+pub struct AddAuraEvent {
+    pub aura_id: usize,
     pub target_entity: Entity,
 }
 
-/// Request to drop a status effect child from the given entity
+/// Request to drop a aura child from the given entity
 #[derive(Event, Debug)]
-pub struct RemoveStatusEffectEvent {
-    pub status_id: usize,
+pub struct RemoveAuraEvent {
+    pub aura_id: usize,
     pub target_entity: Entity,
 }
 
-/// Process an add status effect event
+/// Process an add aura event
 fn add_status_effect_system(
-    mut ev_r: EventReader<AddStatusEffectEvent>,
+    mut ev_r: EventReader<AddAuraEvent>,
     mut commands: Commands,
-    status_system: resource::StatusEffectSystem,
+    auras_db: resource::AuraSysResource,
 ) {
     for ev in ev_r.read() {
         // look up status
-        if let Some(status_data) = status_system.get_status_effect_data(ev.status_id) {
-            // spawn base status effect
+        if let Some(aura_data) = auras_db.get_status_effect_data(ev.aura_id) {
+            // spawn base aura
             let base_entity = commands
-                .spawn((StatusEffect {
+                .spawn((Aura {
                     owner: ev.target_entity,
-                    id: ev.status_id,
-                    duration: Timer::new(status_data.duration, TimerMode::Once),
+                    id: ev.aura_id,
+                    duration: Timer::new(aura_data.duration, TimerMode::Once),
                 },))
                 .id();
 
-            // add status effect types
-            match status_data.status_type {
+            // add aura types
+            match aura_data.status_type {
                 StatusEffectType::TickingHP => {
-                    commands.entity(base_entity).insert(StatusTickingHP::new())
+                    commands.entity(base_entity).insert(AuraTickingHealth::new())
                 }
                 StatusEffectType::Shield => commands
                     .entity(base_entity)
-                    .insert(StatusShield::new(status_data.base_multiplier)),
+                    .insert(StatusShield::new(aura_data.base_multiplier)),
             };
 
             // parent
             commands.entity(ev.target_entity).add_child(base_entity);
 
-            log::debug!("added aura ID {} ({:?})", ev.status_id, base_entity)
+            log::debug!("added aura ID {} ({:?})", ev.aura_id, base_entity)
         }
     }
 }
 
-/// Process a remove status effect event
-fn remove_status_effect_system(
-    mut ev_r: EventReader<RemoveStatusEffectEvent>,
+/// Process a remove aura event
+fn remove_aura_system(
+    mut ev_r: EventReader<RemoveAuraEvent>,
     mut commands: Commands,
     child_query: Query<&Children>,
-    status_effect_query: Query<&StatusEffect>,
+    status_effect_query: Query<&Aura>,
 ) {
     'event_processing: for ev in ev_r.read() {
         // find children of entity
@@ -116,7 +116,7 @@ fn remove_status_effect_system(
             for &child in children.iter() {
                 // for each child grab status
                 if let Ok(status) = status_effect_query.get(child) {
-                    if status.id == ev.status_id {
+                    if status.id == ev.aura_id {
                         // drop one instance of this status
                         commands.entity(child).despawn_recursive();
                         log::debug!("removed aura ID {} ({:?})", status.id, child);
@@ -133,16 +133,16 @@ pub struct StatusEffectPlugin;
 impl Plugin for StatusEffectPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app
-            .add_event::<AddStatusEffectEvent>()
-            .add_event::<RemoveStatusEffectEvent>()
+            .add_event::<AddAuraEvent>()
+            .add_event::<RemoveAuraEvent>()
             .add_event::<ShieldDamageEvent>()
             .insert_resource(resource::get_resource())
             .add_systems(
                 FixedUpdate,
                 (
-                    tick_status_effects_system,
+                    tick_auras_system,
                     add_status_effect_system,
-                    remove_status_effect_system,
+                    remove_aura_system,
                     ticking_hp::ticking_damage_system,
                     shield::shield_damage_system,
                 ),

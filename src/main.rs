@@ -3,7 +3,7 @@ mod game;
 // use std::time::Duration;
 
 use bevy::{log::LogPlugin, prelude::*};
-use game::{health, spells::{self, StartCastingEvent}, status_effect};
+use game::{health, spells::{self, StartCastingEvent}, auras};
 
 // create entities
 fn startup(
@@ -33,7 +33,7 @@ fn main() {
             },
             spells::SpellsPlugin,
             health::HealthPlugin,
-            status_effect::StatusEffectPlugin,
+            auras::StatusEffectPlugin,
         ))
         .insert_resource(Time::<Fixed>::from_hz(2.0))
         .add_plugins(())

@@ -6,7 +6,7 @@ use bevy::{
     }, log::*, time::{Time, Timer}
 };
 
-use super::{health, status_effect::{self, AddStatusEffectEvent}};
+use super::{health, auras::{self, AddAuraEvent}};
 
 #[derive(Event)]
 pub struct StartCastingEvent {
@@ -60,7 +60,7 @@ fn spellcast_tick_system(
     time: Res<Time>,
     spell_list: Res<resource::SpellList>,
     mut ev_w_tick_health: EventWriter<health::HealthTickEvent>,
-    mut ev_w_add_status: EventWriter<status_effect::AddStatusEffectEvent>,
+    mut ev_w_add_status: EventWriter<auras::AddAuraEvent>,
     mut query: Query<(Entity, &mut CastingSpell)>,
 ) {
     for (entity, mut casting) in query.iter_mut() {
@@ -97,7 +97,7 @@ struct SpellCastData {
 
 fn cast_spell(
     health_ev: &mut EventWriter<health::HealthTickEvent>,
-    add_status_ev: &mut EventWriter<status_effect::AddStatusEffectEvent>,
+    add_status_ev: &mut EventWriter<auras::AddAuraEvent>,
     spell_list: &Res<resource::SpellList>,
     data: SpellCastData
 ) {
@@ -120,16 +120,16 @@ fn cast_spell(
 
         // apply target aura
         if let Some(target_aura) = spell_data.target_aura_effect {
-            add_status_ev.send(AddStatusEffectEvent {
-                status_id: target_aura,
+            add_status_ev.send(AddAuraEvent {
+                aura_id: target_aura,
                 target_entity: data.target,
             });
         }
 
         // apply self aura
         if let Some(self_aura) = spell_data.self_aura_effect {
-            add_status_ev.send(AddStatusEffectEvent {
-                status_id: self_aura,
+            add_status_ev.send(AddAuraEvent {
+                aura_id: self_aura,
                 target_entity: data.caster,
             });
         }

@@ -11,7 +11,7 @@ use bevy::{
     log,
 };
 
-use super::status_effect::{self, shield::ShieldDamageEvent};
+use super::auras::{self, shield::ShieldDamageEvent};
 
 pub struct HealthPlugin;
 
@@ -55,8 +55,8 @@ fn health_tick_system(
     mut ev_health_tick: EventReader<HealthTickEvent>,
     mut q_health: Query<&mut Health>,
     q_children: Query<&Children>,
-    q_shields: Query<&status_effect::shield::StatusShield>,
-    mut shield_damage_ev_w: EventWriter<status_effect::shield::ShieldDamageEvent>,
+    q_shields: Query<&auras::shield::StatusShield>,
+    mut shield_damage_ev_w: EventWriter<auras::shield::ShieldDamageEvent>,
 ) {
     for ev in ev_health_tick.read() {
         if let Ok(mut health) = q_health.get_mut(ev.entity) {

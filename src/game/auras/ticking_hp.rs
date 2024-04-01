@@ -16,13 +16,13 @@ use crate::game::health::HealthTickEvent;
 const TICK_RATE: Duration = Duration::from_millis(1000);
 
 #[derive(Component)]
-pub(super) struct StatusTickingHP {
+pub(super) struct AuraTickingHealth {
     ticker: Timer,
 }
 
-impl StatusTickingHP {
-    pub(super) fn new() -> StatusTickingHP {
-        StatusTickingHP {
+impl AuraTickingHealth {
+    pub(super) fn new() -> AuraTickingHealth {
+        AuraTickingHealth {
             ticker: Timer::new(TICK_RATE, TimerMode::Repeating)
         }
     }
@@ -30,15 +30,15 @@ impl StatusTickingHP {
 
 // process ticking damage
 pub(super) fn ticking_damage_system(
-    mut query: Query<(&Parent, &super::StatusEffect, &mut StatusTickingHP)>,
-    status_system: super::resource::StatusEffectSystem,
+    mut query: Query<(&Parent, &super::Aura, &mut AuraTickingHealth)>,
+    aura_resource: super::resource::AuraSysResource,
     time: Res<Time>,
     mut ev_w: EventWriter<HealthTickEvent>,
 ) {
     for (parent, effect, mut hp_tick) in query.iter_mut() {
         hp_tick.ticker.tick(time.delta());
         if hp_tick.ticker.just_finished() {
-            if let Some(effect_data) = status_system.get_status_effect_data(effect.id) {
+            if let Some(effect_data) = aura_resource.get_status_effect_data(effect.id) {
 
                 ev_w.send(HealthTickEvent {
                     entity: parent.get(),
