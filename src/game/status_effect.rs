@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use bevy::{
-    app::{FixedPostUpdate, FixedUpdate, Plugin, PostUpdate, Update},
+    app::{FixedUpdate, Plugin},
     ecs::{
         component::Component,
         entity::Entity,

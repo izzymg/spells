@@ -4,12 +4,11 @@ use bevy::{
         component::Component,
         entity::Entity,
         event::{Event, EventReader, EventWriter},
-        query::{Has, With},
         schedule::IntoSystemConfigs,
         system::{Commands, Query},
     },
     hierarchy::{Children, DespawnRecursiveExt},
-    log::{self, debug},
+    log,
 };
 
 use super::status_effect::{self, shield::ShieldDamageEvent};
@@ -33,9 +32,6 @@ pub struct Health {
 impl Health {
     pub fn new(hp: i64) -> Health {
         Health { hp }
-    }
-    pub fn process_tick(&mut self, hp_change: i64) {
-        self.hp += hp_change;
     }
 }
 
