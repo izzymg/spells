@@ -1,3 +1,3 @@
 pub mod spells;
 pub mod health;
-pub mod auras;
+pub mod status_effect;
