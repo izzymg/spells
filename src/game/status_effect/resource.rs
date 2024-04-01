@@ -1,10 +1,6 @@
 use std::time::Duration;
 
-use bevy::{
-    ecs::{
-        system::{Res, Resource, SystemParam},
-    },
-};
+use bevy::ecs::system::{Res, Resource, SystemParam};
 
 /// allow us to easily fetch effect data
 #[derive(SystemParam)]
@@ -43,7 +39,7 @@ pub(super) struct StatusEffectDatabase(Vec<StatusEffectData>);
 
 pub(super) fn get_resource() -> StatusEffectDatabase {
     StatusEffectDatabase(vec![
-        StatusEffectData::new("Immolated".into(), 5, Duration::from_secs(5), super::StatusEffectType::TickingHP),
-        StatusEffectData::new("Arcane Shield".into(), 1, Duration::from_secs(2), super::StatusEffectType::Shield),
+        StatusEffectData::new("Immolated".into(), -5, Duration::from_secs(10), super::StatusEffectType::TickingHP),
+        StatusEffectData::new("Arcane Shield".into(), 7, Duration::from_secs(5), super::StatusEffectType::Shield),
     ])
 }

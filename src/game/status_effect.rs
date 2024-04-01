@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use bevy::{
-    app::{FixedUpdate, Plugin, Update},
+    app::{FixedPostUpdate, FixedUpdate, Plugin, PostUpdate, Update},
     ecs::{
         component::Component,
         entity::Entity,
@@ -13,11 +13,11 @@ use bevy::{
     time::{Time, Timer, TimerMode},
 };
 
-use self::{shield::StatusShield, ticking_hp::StatusTickingHP};
+use self::{shield::{ShieldDamageEvent, StatusShield}, ticking_hp::StatusTickingHP};
 
 mod resource;
-mod shield;
-mod ticking_hp;
+pub mod shield;
+pub mod ticking_hp;
 
 /// Possible status effect types
 enum StatusEffectType {
@@ -30,6 +30,7 @@ enum StatusEffectType {
 pub struct StatusEffect {
     pub id: usize,
     pub duration: Timer,
+    pub owner: Entity,
 }
 
 impl StatusEffect {
@@ -37,8 +38,6 @@ impl StatusEffect {
         max_duration - self.duration.elapsed()
     }
 }
-
-
 
 /// Tick status effects & remove expired
 fn tick_status_effects_system(
@@ -77,24 +76,29 @@ fn add_status_effect_system(
     for ev in ev_r.read() {
         // look up status
         if let Some(status_data) = status_system.get_status_effect_data(ev.status_id) {
-        // spawn base status effect
-        let base_entity = commands
-            .spawn((StatusEffect {
-                id: ev.status_id,
-                duration: Timer::new(status_data.duration, TimerMode::Once)
-            },))
-            .id();
+            // spawn base status effect
+            let base_entity = commands
+                .spawn((StatusEffect {
+                    owner: ev.target_entity,
+                    id: ev.status_id,
+                    duration: Timer::new(status_data.duration, TimerMode::Once),
+                },))
+                .id();
 
-        // add status effect types
-        match status_data.status_type {
-            StatusEffectType::TickingHP => commands.entity(base_entity).insert(StatusTickingHP::new()),
-            StatusEffectType::Shield => commands.entity(base_entity).insert(StatusShield::new()),
-        };
+            // add status effect types
+            match status_data.status_type {
+                StatusEffectType::TickingHP => {
+                    commands.entity(base_entity).insert(StatusTickingHP::new())
+                }
+                StatusEffectType::Shield => commands
+                    .entity(base_entity)
+                    .insert(StatusShield::new(status_data.base_multiplier)),
+            };
 
-        // parent
-        commands.entity(ev.target_entity).add_child(base_entity);
+            // parent
+            commands.entity(ev.target_entity).add_child(base_entity);
 
-        log::debug!("added aura ID {} ({:?})", ev.status_id, base_entity)
+            log::debug!("added aura ID {} ({:?})", ev.status_id, base_entity)
         }
     }
 }
@@ -128,18 +132,20 @@ pub struct StatusEffectPlugin;
 
 impl Plugin for StatusEffectPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_event::<AddStatusEffectEvent>()
-        .add_event::<RemoveStatusEffectEvent>()
-        .insert_resource(resource::get_resource())
-        .add_systems(
-            Update,
-            (
-                tick_status_effects_system,
-                add_status_effect_system,
-                remove_status_effect_system,
-                ticking_hp::ticking_damage_system,
-                shield::status_shield_system,
-            ),
-        );
+        app
+            .add_event::<AddStatusEffectEvent>()
+            .add_event::<RemoveStatusEffectEvent>()
+            .add_event::<ShieldDamageEvent>()
+            .insert_resource(resource::get_resource())
+            .add_systems(
+                FixedUpdate,
+                (
+                    tick_status_effects_system,
+                    add_status_effect_system,
+                    remove_status_effect_system,
+                    ticking_hp::ticking_damage_system,
+                    shield::shield_damage_system,
+                ),
+            );
     }
 }

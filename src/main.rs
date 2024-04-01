@@ -1,5 +1,4 @@
 mod game;
-mod tests;
 
 // use std::time::Duration;
 
@@ -9,24 +8,23 @@ use game::{status_effect, health, spells};
 // create entities
 fn startup(
     mut commands: Commands,
-    mut ev_w_spellcasting: EventWriter<spells::StartCastingEvent>,
     mut ev_w_aura_add: EventWriter<status_effect::AddStatusEffectEvent>,
 ) {
-    let target = commands.spawn(health::Health(1000)).id();
-
-    let caster = commands
-        .spawn((health::Health(50), spells::Spellcaster {}))
+    let guy = commands
+        .spawn(health::Health::new(50))
         .id();
 
-    ev_w_spellcasting.send(spells::StartCastingEvent {
-        entity: caster,
-        target,
-        spell_id: 1,
-    });
-
     ev_w_aura_add.send(status_effect::AddStatusEffectEvent {
-        target_entity: target,
+        target_entity: guy,
         status_id: 0,
+    });
+    ev_w_aura_add.send(status_effect::AddStatusEffectEvent {
+        target_entity: guy,
+        status_id: 1,
+    });
+    ev_w_aura_add.send(status_effect::AddStatusEffectEvent {
+        target_entity: guy,
+        status_id: 1,
     });
 }
 fn main() {

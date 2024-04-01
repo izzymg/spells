@@ -119,7 +119,6 @@ struct SpellCastData {
 
 fn cast_spell(ev_w: &mut EventWriter<health::HealthTickEvent>, spell_list: &Res<resource::SpellList>, data: SpellCastData) {
     if let Some(spell_data) = spell_list.get_spell_data(data.spell_id) {
-
         // apply target hp
         if let Some(hp) = spell_data.target_health_effect {
             ev_w.send(health::HealthTickEvent {
