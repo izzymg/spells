@@ -3,15 +3,14 @@ use bevy::{
     ecs::{
         component::Component,
         entity::Entity,
-        event::{Event, EventReader, EventWriter},
+        event::{Event, EventReader},
         schedule::IntoSystemConfigs,
         system::{Commands, Query},
     },
-    hierarchy::{Children, DespawnRecursiveExt},
+    hierarchy::DespawnRecursiveExt,
     log,
 };
 
-use super::auras::{self, shield::ShieldDamageEvent};
 
 pub struct HealthPlugin;
 
@@ -54,34 +53,11 @@ fn death_system(mut commands: Commands, query: Query<(Entity, &Health)>) {
 fn health_tick_system(
     mut ev_health_tick: EventReader<HealthTickEvent>,
     mut q_health: Query<&mut Health>,
-    q_children: Query<&Children>,
-    q_shields: Query<&auras::shield::StatusShield>,
-    mut shield_damage_ev_w: EventWriter<auras::shield::ShieldDamageEvent>,
 ) {
     for ev in ev_health_tick.read() {
         if let Ok(mut health) = q_health.get_mut(ev.entity) {
-            let mut damage = ev.hp;
-            if ev.hp.is_negative() {
-                // get total value of hit entity's shields
-                if let Some(shield_total) = q_children
-                    .get(ev.entity)
-                    .iter()
-                    .flat_map(|&e| q_shields.iter_many(e))
-                    .map(|f| f.value)
-                    .reduce(|f, v| f + v)
-                {
-                    // notify of shield damage
-                    shield_damage_ev_w.send(ShieldDamageEvent {
-                        damage: ev.hp.abs(),
-                        entity: ev.entity,
-                    });
-                    // apply post-shielded damage
-                    damage = (shield_total + ev.hp).min(0);
-                }
-            }
-
-            health.hp += damage;
-            log::debug!("{:?} ticked for {} ({} apl), hp: {}", ev.entity, damage, ev.hp, health.hp);
+            health.hp += ev.hp;
+            log::debug!("{:?} ticked for {} hp: {}", ev.entity, ev.hp, health.hp);
         }
     }
 }

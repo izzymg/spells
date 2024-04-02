@@ -33,7 +33,7 @@ fn main() {
             },
             spells::SpellsPlugin,
             health::HealthPlugin,
-            auras::StatusEffectPlugin,
+            auras::AuraPlugin,
         ))
         .insert_resource(Time::<Fixed>::from_hz(2.0))
         .add_plugins(())

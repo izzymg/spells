@@ -30,7 +30,6 @@ enum StatusEffectType {
 pub struct Aura {
     pub id: usize,
     pub duration: Timer,
-    pub owner: Entity,
 }
 
 impl Aura {
@@ -79,7 +78,6 @@ fn add_status_effect_system(
             // spawn base aura
             let base_entity = commands
                 .spawn((Aura {
-                    owner: ev.target_entity,
                     id: ev.aura_id,
                     duration: Timer::new(aura_data.duration, TimerMode::Once),
                 },))
@@ -128,9 +126,9 @@ fn remove_aura_system(
     }
 }
 
-pub struct StatusEffectPlugin;
+pub struct AuraPlugin;
 
-impl Plugin for StatusEffectPlugin {
+impl Plugin for AuraPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app
             .add_event::<AddAuraEvent>()

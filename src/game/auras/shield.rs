@@ -51,7 +51,7 @@ pub(super) fn shield_damage_system(
 
 #[cfg(test)]
 mod test {
-    use bevy::{app::{self, Update}, ecs::event::Events, hierarchy::BuildWorldChildren};
+    use bevy::{app::{self, FixedUpdate}, ecs::event::Events, hierarchy::BuildWorldChildren};
 
     use super::{shield_damage_system, ShieldDamageEvent, StatusShield};
 
@@ -59,7 +59,7 @@ mod test {
     pub fn test_shield_damage_system() {
         let mut app = app::App::new();
         app.add_event::<ShieldDamageEvent>();
-        app.add_systems(Update, shield_damage_system);
+        app.add_systems(FixedUpdate, shield_damage_system);
 
         let test_shield_values = vec![100, 200];
 
