@@ -1,6 +1,6 @@
 /// status effect that ticks HP change onto the target
 
-use std::time::Duration;
+use std::{default, time::Duration};
 
 use bevy::{
     ecs::{
@@ -11,7 +11,7 @@ use bevy::{
     time::{Time, Timer, TimerMode},
 };
 
-use crate::game::health::HealthTickEvent;
+use crate::effect_application;
 
 const TICK_RATE: Duration = Duration::from_millis(1000);
 
@@ -33,16 +33,17 @@ pub(super) fn ticking_damage_system(
     mut query: Query<(&Parent, &super::Aura, &mut AuraTickingHealth)>,
     aura_resource: super::resource::AuraSysResource,
     time: Res<Time>,
-    mut ev_w: EventWriter<HealthTickEvent>,
+    mut ev_w: EventWriter<effect_application::EffectQueueEvent>,
 ) {
     for (parent, effect, mut hp_tick) in query.iter_mut() {
         hp_tick.ticker.tick(time.delta());
         if hp_tick.ticker.just_finished() {
             if let Some(effect_data) = aura_resource.get_status_effect_data(effect.id) {
 
-                ev_w.send(HealthTickEvent {
-                    entity: parent.get(),
-                    hp: effect_data.base_multiplier,
+                ev_w.send(effect_application::EffectQueueEvent {
+                    target: parent.get(),
+                    health_effect: Some(effect_data.base_multiplier),
+                    aura_effect: None,
                 });
                 log::debug!(
                     "{:?} ticks {} ({}/{}s)",

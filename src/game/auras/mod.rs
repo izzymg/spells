@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fmt, time::Duration};
 
 use bevy::{
     app::{FixedUpdate, Plugin},
@@ -19,6 +19,28 @@ mod resource;
 pub mod shield;
 pub mod ticking_hp;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AuraID(usize);
+
+impl AuraID {
+    fn get(self) -> usize {
+        self.0
+    }
+}
+
+impl From<usize> for AuraID {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+
+impl fmt::Display for AuraID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(AURA:{})", self.0)
+    }
+}
+
+
 /// Possible aura types
 enum StatusEffectType {
     TickingHP,
@@ -28,7 +50,7 @@ enum StatusEffectType {
 ///T his entity has a aura, we can look up its complex data
 #[derive(Component)]
 pub struct Aura {
-    pub id: usize,
+    pub id: AuraID,
     pub duration: Timer,
 }
 
@@ -55,14 +77,14 @@ fn tick_auras_system(
 /// Request to add a aura child to the given entity
 #[derive(Event, Debug)]
 pub struct AddAuraEvent {
-    pub aura_id: usize,
+    pub aura_id: AuraID,
     pub target_entity: Entity,
 }
 
 /// Request to drop a aura child from the given entity
 #[derive(Event, Debug)]
 pub struct RemoveAuraEvent {
-    pub aura_id: usize,
+    pub aura_id: AuraID,
     pub target_entity: Entity,
 }
 
@@ -96,7 +118,7 @@ fn add_status_effect_system(
             // parent
             commands.entity(ev.target_entity).add_child(base_entity);
 
-            log::debug!("added aura ID {} ({:?})", ev.aura_id, base_entity)
+            log::debug!("({:?}) gains aura {}", ev.target_entity, ev.aura_id)
         }
     }
 }

@@ -3,7 +3,7 @@ mod game;
 // use std::time::Duration;
 
 use bevy::{log::LogPlugin, prelude::*};
-use game::{health, spells::{self, StartCastingEvent}, auras};
+use game::{auras, effect_application, health, spells};
 
 // create entities
 fn startup(
@@ -19,8 +19,8 @@ fn startup(
         .id();
 
 
-    start_casting_write.send(StartCastingEvent::new(guy, target, 0));
-    start_casting_write.send(StartCastingEvent::new(target, target, 1));
+    start_casting_write.send(spells::StartCastingEvent::new(guy, target, 0.into()));
+    start_casting_write.send(spells::StartCastingEvent::new(target, target, 1.into()));
 }
 fn main() {
     App::new()
@@ -34,6 +34,7 @@ fn main() {
             spells::SpellsPlugin,
             health::HealthPlugin,
             auras::AuraPlugin,
+            effect_application::EffectQueuePlugin,
         ))
         .insert_resource(Time::<Fixed>::from_hz(2.0))
         .add_plugins(())

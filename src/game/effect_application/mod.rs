@@ -11,20 +11,24 @@ use bevy::{
 
 use crate::game::auras::shield::ShieldDamageEvent;
 
-use super::{auras::{self, shield}, health::{self, HealthTickEvent}};
+use super::{
+    auras::{self, shield, AuraID},
+    health::{self, HealthTickEvent},
+};
 
 /// Queue an effect onto the target.
 #[derive(Event, Debug, Copy, Clone)]
 pub struct EffectQueueEvent {
-    origin: Entity,
-    target: Entity,
-    health_effect: Option<i64>,
+    pub target: Entity,
+    pub health_effect: Option<i64>,
+    pub aura_effect: Option<AuraID>,
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct EffectPass {
+struct EffectPass {
     target: Entity,
     health_effect: Option<i64>,
+    aura_effect: Option<AuraID>,
 }
 
 impl From<EffectQueueEvent> for EffectPass {
@@ -32,14 +36,15 @@ impl From<EffectQueueEvent> for EffectPass {
         Self {
             health_effect: value.health_effect,
             target: value.target,
+            aura_effect: value.aura_effect,
         }
     }
 }
 
 #[derive(Clone, Copy)]
 struct AbsorbDamage {
-    pub total: Option<i64>,
-    pub remaining: i64,
+    total: Option<i64>,
+    remaining: i64,
 }
 
 fn get_absorb_value(
@@ -65,9 +70,6 @@ fn dispatch_shields(
     q_shields: Query<&auras::shield::StatusShield>,
     mut shield_dmg_event_w: EventWriter<shield::ShieldDamageEvent>,
 ) -> Vec<EffectPass> {
-
-    println!("SHIELD PASS...");
-
     let mut absorb_cache: HashMap<Entity, AbsorbDamage> = HashMap::new();
 
     for effect in pass.iter_mut() {
@@ -120,16 +122,26 @@ fn dispatch_shields(
     pass
 }
 
-pub fn dispatch_damage(
+fn dispatch_damage(
     In(second_pass): In<Vec<EffectPass>>,
-    mut health_event_w: EventWriter<health::HealthTickEvent>
+    mut health_event_w: EventWriter<health::HealthTickEvent>,
+    mut aura_add_event_w: EventWriter<auras::AddAuraEvent>,
 ) {
-     second_pass.into_iter().filter(|&e| e.health_effect.is_some()).for_each(|pass| {
-        health_event_w.send(HealthTickEvent {
-            entity: pass.target,
-            hp: pass.health_effect.unwrap(),
-        });
-     });
+    for pass in second_pass {
+        if let Some(hp) = pass.health_effect {
+            health_event_w.send(HealthTickEvent {
+                entity: pass.target,
+                hp,
+            });
+        }
+
+        if let Some(aura_id) = pass.aura_effect {
+            aura_add_event_w.send(auras::AddAuraEvent {
+                aura_id,
+                target_entity: pass.target,
+            });
+        }
+    }
 }
 
 pub struct EffectQueuePlugin;
@@ -150,27 +162,26 @@ mod test {
     use bevy::{
         app::{App, Update},
         ecs::{entity::Entity, event::Events, system::IntoSystem, world::World},
-        hierarchy::BuildWorldChildren, utils,
+        hierarchy::BuildWorldChildren,
+        utils,
     };
 
     use crate::game::{auras::shield, health};
 
-    use super::{EffectQueueEvent, process_events};
+    use super::{process_events, EffectQueueEvent};
 
     fn spawn_guy(world: &mut World) -> Entity {
         world.spawn(health::Health { hp: 50 }).id()
     }
 
     fn spawn_shield(world: &mut World, parent: Entity, val: i64) {
-        let shield = world.spawn(shield::StatusShield {
-            value: val,
-        }).id();
+        let shield = world.spawn(shield::StatusShield { value: val }).id();
         world.entity_mut(parent).add_child(shield);
     }
 
     struct Test {
         events: Vec<EffectQueueEvent>,
-        shields: Vec<i64>
+        shields: Vec<i64>,
     }
 
     #[test]
@@ -181,28 +192,26 @@ mod test {
         let guy = spawn_guy(&mut app.world);
         app.update();
 
-        let tests = vec![
-            Test {
-                shields: vec![30, 50, 100],
-                events: vec![
-                    EffectQueueEvent{
-                        health_effect: Some(-5),
-                        origin: guy,
-                        target: guy,
-                    },
-                    EffectQueueEvent{
-                        health_effect: Some(-150),
-                        origin: guy,
-                        target: guy,
-                    },
-                    EffectQueueEvent{
-                        health_effect: Some(-180),
-                        origin: guy,
-                        target: guy,
-                    },
-                ],
-            }
-        ];
+        let tests = vec![Test {
+            shields: vec![30, 50, 100],
+            events: vec![
+                EffectQueueEvent {
+                    health_effect: Some(-5),
+                    target: guy,
+                    aura_effect: None,
+                },
+                EffectQueueEvent {
+                    health_effect: Some(-150),
+                    target: guy,
+                    aura_effect: None,
+                },
+                EffectQueueEvent {
+                    health_effect: Some(-180),
+                    target: guy,
+                    aura_effect: None,
+                },
+            ],
+        }];
 
         for test in tests {
             for shield in test.shields {
@@ -216,10 +225,6 @@ mod test {
                     .send(ev);
             }
             app.update();
-
-            
         }
-
-
     }
 }
