@@ -1,11 +1,11 @@
 use std::time::Duration;
-
 use bevy::ecs::system::Resource;
 
 #[derive(Default, Debug)]
 pub(super) struct SpellData {
     pub name: String,
     pub cast_time: Duration,
+    
     pub target_health_effect: Option<i64>,
     pub self_health_effect: Option<i64>,
     pub self_aura_effect: Option<usize>,
@@ -17,10 +17,7 @@ impl SpellData {
         Self {
             name: name,
             cast_time: Duration::from_millis(cast_ms),
-            self_health_effect: None,
-            target_health_effect: None,
-            self_aura_effect: None,
-            target_aura_effect: None,
+            ..Default::default()
         }
     }
     
@@ -43,6 +40,7 @@ impl SpellData {
         self.target_aura_effect = Some(aura);
         self
     }
+
 }
 
 
@@ -58,7 +56,7 @@ impl SpellList {
 pub(super) fn get_spell_list_resource() -> SpellList {
     SpellList(
         vec![
-            SpellData::new("Fire Ball".into(), 2500).with_target_hp(-15).with_target_aura(0),
+            SpellData::new("Fire Ball".into(), 2500).with_target_hp(50).with_target_aura(0),
             SpellData::new("Arcane Barrier".into(), 500).with_self_aura(1),
             SpellData::new("Restore Soul".into(), 5000).with_self_hp(50)
         ]
