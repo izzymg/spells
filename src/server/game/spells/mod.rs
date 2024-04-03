@@ -1,6 +1,6 @@
-mod casting;
-mod resource;
-mod spell_application;
+pub mod casting;
+pub mod resource;
+pub mod spell_application;
 
 use std::fmt;
 
@@ -13,7 +13,7 @@ use bevy::{
 pub struct SpellID(usize);
 
 impl SpellID {
-    fn get(self) -> usize {
+    pub fn get(self) -> usize {
         self.0
     }
 }

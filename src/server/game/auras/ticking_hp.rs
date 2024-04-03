@@ -11,7 +11,7 @@ use bevy::{
     time::{Time, Timer, TimerMode},
 };
 
-use crate::effect_application;
+use crate::game::effect_application;
 
 const TICK_RATE: Duration = Duration::from_millis(1000);
 

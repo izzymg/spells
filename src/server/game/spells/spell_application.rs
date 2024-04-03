@@ -28,7 +28,6 @@ pub(super) fn handle_spell_applications_system(
 ) {
     for ev in spell_ev_r.read() {
         if let Some(spell_data) = spell_list.get_spell_data(ev.spell_id) {
-            log::debug!("applying spell {} to {:?}", ev.spell_id, ev.target);
             effect_ev_w.send(effect_application::EffectQueueEvent {
                 target: ev.target,
                 health_effect: spell_data.target_health_effect,

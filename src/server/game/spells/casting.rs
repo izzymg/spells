@@ -37,10 +37,10 @@ impl StartCastingEvent {
 
 // Unit is casting a spell
 #[derive(Debug, Component)]
-pub(super) struct CastingSpell {
-    spell_id: SpellID,
-    target: Entity,
-    cast_timer: Timer,
+pub struct CastingSpell {
+    pub spell_id: SpellID,
+    pub target: Entity,
+    pub cast_timer: Timer,
 }
 
 impl CastingSpell {
