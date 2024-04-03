@@ -1,25 +1,5 @@
-[package]
-name = "spells"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-bevy = "0.13.1"
-
-# Enable a small amount of optimization in debug mode
-[profile.dev]
-opt-level = 1
-
-# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
-[profile.dev.package."*"]
-opt-level = 3
-
-[[bin]]
-name = "client"
-path = "src/client/main.rs"
-
-[[bin]]
-name = "server"
-path = "src/server/main.rs"
+[workspace]
+members = [
+    "server",
+    "client",
+]

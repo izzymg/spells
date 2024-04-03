@@ -3013,7 +3013,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "spells"
+name = "spells-client"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+]
+
+[[package]]
+name = "spells-server"
 version = "0.1.0"
 dependencies = [
  "bevy",
