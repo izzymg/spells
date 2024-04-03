@@ -3,7 +3,7 @@ mod game;
 // use std::time::Duration;
 
 use bevy::{log::LogPlugin, prelude::*};
-use game::{auras, effect_application, health, spells};
+use game::{alignment, auras, effect_application, health, spells};
 
 // create entities
 fn startup(
@@ -11,11 +11,11 @@ fn startup(
     mut start_casting_write: EventWriter<spells::StartCastingEvent>,
 ) {
     let guy = commands
-        .spawn(health::Health::new(50))
+        .spawn((alignment::FactionMember(0b001), health::Health::new(50)))
         .id();
 
     let target = commands
-        .spawn(health::Health::new(50))
+        .spawn((alignment::FactionMember(0b000), health::Health::new(50)))
         .id();
 
 

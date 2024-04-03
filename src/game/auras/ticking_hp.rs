@@ -1,6 +1,6 @@
 /// status effect that ticks HP change onto the target
 
-use std::{default, time::Duration};
+use std::{time::Duration};
 
 use bevy::{
     ecs::{

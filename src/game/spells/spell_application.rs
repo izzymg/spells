@@ -13,8 +13,7 @@ use super::{resource::SpellList, SpellID};
 
 /// handles application of spell effects to a target
 /// fetches relevant damage data & translates them into effect application events
-///
-///
+
 #[derive(Clone, Copy, Debug, Event)]
 pub(super) struct SpellApplicationEvent {
     pub origin: Entity,

@@ -1,7 +1,7 @@
 use std::time::Duration;
 use bevy::ecs::system::Resource;
 
-use crate::game::auras;
+use crate::game::{alignment::{self, Hostility}, auras};
 
 use super::SpellID;
 
@@ -9,7 +9,7 @@ use super::SpellID;
 pub(super) struct SpellData {
     pub name: String,
     pub cast_time: Duration,
-    
+    pub hostility: alignment::Hostility,
     pub target_health_effect: Option<i64>,
     pub target_aura_effect: Option<auras::AuraID>,
 }
@@ -33,6 +33,11 @@ impl SpellData {
         self
     }
 
+    fn mark_friendly(mut self) -> Self {
+        self.hostility = Hostility::Friendly;
+        self
+    }
+
 }
 
 #[derive(Resource)]
@@ -48,7 +53,7 @@ pub(super) fn get_spell_list_resource() -> SpellList {
     SpellList(
         vec![
             SpellData::new("Fire Ball".into(), 2500).with_target_hp(-50).with_target_aura(0.into()),
-            SpellData::new("Arcane Barrier".into(), 0).with_target_aura(1.into()),
+            SpellData::new("Arcane Barrier".into(), 0).with_target_aura(1.into()).mark_friendly(),
         ]
     )
 }

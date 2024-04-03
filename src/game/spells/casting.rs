@@ -1,10 +1,12 @@
 use std::time::Duration;
 use bevy::{ecs::{
-        component::Component, entity::Entity, event::{Event, EventReader, EventWriter}, system::{Commands, Query, Res}
+        component::Component, entity::Entity, event::{Event, EventReader, EventWriter}, system::{Commands, In, Query, Res}
     }, log::*, time::{Time, Timer}
 };
 
-use super::{resource, spell_application, SpellID};
+use crate::game::alignment::{self, Hostility};
+
+use super::{resource, spell_application::{self, SpellApplicationEvent}, SpellID};
 
 #[derive(Event)]
 pub struct StartCastingEvent {
@@ -35,33 +37,49 @@ impl CastingSpell {
     }
 }
 
-// Tick spell casts and push finished casts to spell application.
-pub(super) fn spellcast_tick_system(
+pub(super) fn check_finished_casts_system(
     mut commands: Commands,
-    time: Res<Time>,
+    mut query: Query<(Entity, &mut CastingSpell, Option<&alignment::FactionMember>)>,
+    spell_list: Res<resource::SpellList>,
+    faction_checker: alignment::FactionChecker,
     mut spell_app_ev_w: EventWriter<spell_application::SpellApplicationEvent>,
-    mut query: Query<(Entity, &mut CastingSpell)>,
 ) {
-    for (entity, mut casting) in query.iter_mut() {
-        casting.cast_timer.tick(time.delta());
-        debug!(
-            "spell cast {} at {:?} ({}s)",
-            casting.spell_id,
-            casting.target,
-            casting.cast_timer.elapsed_secs()
-        );
-
+    for (entity, casting, faction_member) in query.iter_mut() {
         if casting.cast_timer.finished() {
             commands.entity(entity).remove::<CastingSpell>();
 
-            // todo: THIS -> SPELL CREATION -> SPELL APPLICATION
-            // for projectile casting etc
-            spell_app_ev_w.send(spell_application::SpellApplicationEvent {
+            let spell = spell_list.get_spell_data(casting.spell_id).unwrap();
+
+            // no faction check if entity casts a helpful spell on itself
+            if !(spell.hostility == Hostility::Friendly && entity == casting.target) {
+                if let Some(caster_faction) = faction_member {
+                    let target_faction = faction_checker.get_entity_faction(casting.target).unwrap_or_default();
+                    if !alignment::is_valid_target(spell.hostility,  caster_faction.0, target_faction) {
+                        // skip invalid
+                        continue;
+                    }
+                } else if spell.hostility == Hostility::Friendly {
+                    // skip friendly-other casts when caster has no faction
+                    continue;
+                }
+            }
+            // send spell application events
+            spell_app_ev_w.send(SpellApplicationEvent {
                 origin: entity,
-                target: casting.target,
                 spell_id: casting.spell_id,
+                target: casting.target,
             });
         }
+    }
+}
+
+// Tick spell casts and push finished casts to spell application.
+pub(super) fn tick_cast_system(
+    time: Res<Time>,
+    mut query: Query<&mut CastingSpell>,
+) {
+    for mut casting in query.iter_mut() {
+        casting.cast_timer.tick(time.delta());
     }
 }
 

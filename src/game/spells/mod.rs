@@ -43,7 +43,8 @@ impl Plugin for SpellsPlugin {
                 FixedUpdate,
                 (
                     casting::handle_start_casting_event_system,
-                    casting::spellcast_tick_system,
+                    casting::tick_cast_system,
+                    casting::check_finished_casts_system,
                     spell_application::handle_spell_applications_system
                 )
                     .chain(),
