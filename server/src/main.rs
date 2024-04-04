@@ -1,6 +1,8 @@
+use std::error::Error;
+
 mod game;
 
-fn main() {
-    game::run_game_server();
-
+fn main() -> Result<(), Box<dyn Error>> {
+    game::run_game_server()?;
+    Ok(())
 }
