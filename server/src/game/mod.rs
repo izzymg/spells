@@ -1,4 +1,4 @@
-use std::{error::Error, thread};
+use std::error::Error;
 
 /// snapshots of world
 use bevy::{
@@ -31,13 +31,6 @@ fn startup(
 }
 
 pub fn run_game_server() -> Result<(), Box<dyn Error>>{
-
-    // find client first
-    let mut client_getter = socket::client_getter::ClientGetter::create()?;
-
-    thread::spawn(move|| {
-        client_getter.block_get_client();
-    });
     
     app::App::new().add_plugins((
         MinimalPlugins,

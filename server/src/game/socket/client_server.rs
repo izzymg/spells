@@ -3,6 +3,7 @@ use mio::{Events, Interest, Poll, Token};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::net::SocketAddr;
+use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 use std::{io, time};
 
@@ -66,7 +67,7 @@ impl Display for BroadcastError {
     }
 }
 
-pub struct ClientGetter {
+pub struct ClientServer {
     listener: TcpListener,
     events: Events,
     poll: Poll,
@@ -76,15 +77,15 @@ pub struct ClientGetter {
     next_socket: usize,
 }
 
-impl ClientGetter {
-    pub fn create() -> io::Result<ClientGetter> {
+impl ClientServer {
+    pub fn create() -> io::Result<ClientServer> {
         println!("binding server to {SERVER_ADDR}");
         let mut listener = TcpListener::bind(SERVER_ADDR.parse().unwrap())?;
         let poll = Poll::new()?;
         poll.registry()
             .register(&mut listener, SERVER_TOKEN, Interest::READABLE)?;
         let events = Events::with_capacity(EVENT_BUFFER_SIZE);
-        Ok(ClientGetter {
+        Ok(ClientServer {
             listener,
             poll,
             events,
@@ -119,7 +120,7 @@ impl ClientGetter {
     }
 
     /// block on event look waiting for new clients, adding them by their token to a map of active cleint
-    pub fn block_get_client(&mut self) {
+    pub fn block_get_client(&mut self, broadcast: Receiver<String>) {
         loop {
             println!("polling");
             if let Err(poll_err) = self.poll.poll(&mut self.events, Some(MIN_TICK)) {
@@ -186,6 +187,10 @@ impl ClientGetter {
                     }
                 }
             }
+
+            if let Ok(data) = broadcast.try_recv() {
+                self.broadcast(data.as_str());
+            }
         }
     }
 
@@ -214,7 +219,7 @@ impl ClientGetter {
                     token: *token,
                 })
             })
-            .filter_map(|v| v.is_err().then_some(v.unwrap_err()))
+            .filter_map(|v| v.is_err().then(|| v.unwrap_err()))
             .collect();
 
         for failure in failures {
@@ -229,12 +234,10 @@ mod tests {
     use std::{
         io::{Read, Write},
         net::TcpStream,
-        thread::{self, sleep}, time::Duration,
+        thread, time::Duration,
     };
 
     use crate::game::socket::{CLIENT_EXPECT, SERVER_HEADER};
-
-    use super::ClientGetter;
 
     #[test]
     fn test_getter() {

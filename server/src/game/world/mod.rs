@@ -1,12 +1,16 @@
+use std::{sync::mpsc, thread};
+
 /// snapshots of world
 use bevy::{
     app::{FixedLast, Plugin},
-    ecs::system::{In, Query},
+    ecs::system::{In, Query, ResMut, Resource},
     prelude::IntoSystem,
     utils::dbg,
 };
 
 use crate::game::spells::casting;
+
+use super::socket;
 
 #[derive(Debug)]
 pub struct CasterState {
@@ -39,10 +43,35 @@ fn state_casters_sys(
     world_state
 }
 
+fn broadcast_state_to_clients_sys(
+    In(world_state): In<WorldState>,
+    broadcaster: ResMut<ClientBroadcaster>,
+) -> WorldState {
+    broadcaster.0.send("FAKE STATE\n".into()).unwrap();
+    world_state
+}
+
+#[derive(Resource)]
+pub struct ClientBroadcaster(mpsc::Sender<String>);
+
 pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_systems(FixedLast, create_state_sys.pipe(state_casters_sys).map(dbg));
+        let mut client_getter = socket::client_server::ClientServer::create().unwrap();
+        let (tx, rx) = mpsc::channel();
+
+        thread::spawn(move || {
+            client_getter.block_get_client(rx);
+        });
+
+        app.insert_resource(ClientBroadcaster(tx)).add_systems(
+            FixedLast,
+            create_state_sys.pipe(
+                state_casters_sys
+                    .pipe(broadcast_state_to_clients_sys)
+                    .map(dbg),
+            ),
+        );
     }
 }

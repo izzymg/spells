@@ -17,10 +17,6 @@ impl ClientStream {
         })
     }
 
-    pub fn shutdown(&mut self) -> Result<(), io::Error> {
-        self.stream.shutdown(std::net::Shutdown::Both)
-    }
-
     pub fn write(&mut self, data: &str) -> io::Result<()> {
         println!("stream write: {}", data);
         self.stream.write_all(data.as_bytes())?;
