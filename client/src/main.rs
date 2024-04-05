@@ -7,7 +7,7 @@ use std::{
 };
 
 use bevy::{
-    ecs::system::NonSend,
+    app::Update, ecs::system::NonSend, DefaultPlugins
 };
 
 const SERVER_ADDR: &str = "127.0.0.1:7776";
@@ -137,11 +137,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             connection_handler.listen(tx);
         });
 
-        // bevy::app::App::new()
-        //     .add_plugins(DefaultPlugins)
-        //     .insert_non_send_resource(ServerStateReceiver(rx))
-        //     .add_systems(Update, (check_world_server_data_system))
-        //     .run();
+        bevy::app::App::new()
+            .add_plugins(DefaultPlugins)
+            .insert_non_send_resource(ServerStateReceiver(rx))
+            .add_systems(Update, check_world_server_data_system)
+            .run();
         Ok(())
     }
 }
