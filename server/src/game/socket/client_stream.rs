@@ -19,8 +19,7 @@ impl ClientStream {
 
     pub fn write(&mut self, data: &str) -> io::Result<()> {
         println!("stream write: {}", data);
-        self.stream.write_all(data.as_bytes())?;
-        self.stream.flush()
+        self.stream.write_all(data.as_bytes())
     }
 
     pub fn write_header(&mut self) -> io::Result<()> {

@@ -258,7 +258,6 @@ mod tests {
             stream.read_exact(&mut first_response).unwrap();
             assert_eq!(SERVER_HEADER.as_bytes(), first_response);
             stream.write(CLIENT_EXPECT.as_bytes()).unwrap();
-            stream.flush().unwrap();
         }
         thread::sleep(Duration::from_secs(4));
         {
@@ -268,7 +267,6 @@ mod tests {
             stream.read_exact(&mut first_response).unwrap();
             assert_eq!(SERVER_HEADER.as_bytes(), first_response);
             stream.write(CLIENT_EXPECT.as_bytes()).unwrap();
-            stream.flush().unwrap();
         }
     }
 }
