@@ -12,6 +12,7 @@ pub mod effect_application;
 pub mod alignment;
 pub mod world;
 pub mod socket;
+pub mod serialize;
 
 fn startup(
     mut commands: Commands,
@@ -45,7 +46,7 @@ pub fn run_game_server() -> Result<(), Box<dyn Error>>{
         effect_application::EffectQueuePlugin,
         world::WorldPlugin,
     ))
-    .insert_resource(Time::<Fixed>::from_hz(2.0))
+    .insert_resource(Time::<Fixed>::from_hz(0.5))
     .add_systems(Startup, startup).run();
     Ok(())
 }

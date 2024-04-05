@@ -13,8 +13,8 @@ use super::CLIENT_EXPECT;
 const SERVER_ADDR: &str = "0.0.0.0:7776";
 const SERVER_TOKEN: Token = Token(0); // uniquely identify TCP listener events
 const EVENT_BUFFER_SIZE: usize = 1028;
-const PENDING_TIMEOUT: Duration = Duration::from_millis(50); // how long to wait on a client to verify before we kick them
-const MIN_TICK: Duration = Duration::from_millis(2000); // how often at minimum we should check for pending clients, clean up dead connectios
+const PENDING_TIMEOUT: Duration = Duration::from_millis(4000); // how long to wait on a client to verify before we kick them
+const MIN_TICK: Duration = Duration::from_millis(250); // how often at minimum we should check for pending clients, clean up dead connectios
 
 #[derive(Debug)]
 pub struct PendingClient {
@@ -22,8 +22,31 @@ pub struct PendingClient {
     client: ClientStream,
 }
 
-pub struct ClientValidationError {
-    pub error: String,
+#[derive(Debug)]
+pub enum ClientValidationError {
+    IO(io::Error),
+    ErrInvalidHeader,
+}
+
+impl std::error::Error for ClientValidationError {}
+
+impl Display for ClientValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClientValidationError::IO(io_err) => {
+                write!(f, "IO error: {}", io_err)
+            }
+            ClientValidationError::ErrInvalidHeader => {
+                write!(f, "invalid header response from client")
+            }
+        }
+    }
+}
+
+impl From<io::Error> for ClientValidationError {
+    fn from(value: io::Error) -> Self {
+        Self::IO(value)
+    }
 }
 
 impl PendingClient {
@@ -40,15 +63,13 @@ impl PendingClient {
     }
 
     /// read the client stream and return if the response
-    pub fn got_valid_response(&mut self) -> Result<bool, ClientValidationError> {
+    pub fn validate(&mut self) -> Result<(), ClientValidationError> {
         let mut buf: [u8; CLIENT_EXPECT.as_bytes().len()] = [0; CLIENT_EXPECT.as_bytes().len()];
-        match self.client.read_fill(&mut buf) {
-            Ok(_) => {
-                println!("{:?} | {:?} | {}", buf, CLIENT_EXPECT.as_bytes(), buf == CLIENT_EXPECT.as_bytes());
-                return Ok(CLIENT_EXPECT.as_bytes() == buf)
-            }
-            Err(err) => return Err(ClientValidationError{ error: err.to_string() })
+        self.client.read_fill(&mut buf)?;
+        if CLIENT_EXPECT.as_bytes() != buf {
+            return Err(ClientValidationError::ErrInvalidHeader);
         }
+        Ok(())
     }
 }
 
@@ -120,9 +141,14 @@ impl ClientServer {
     }
 
     /// block on event look waiting for new clients, adding them by their token to a map of active cleint
-    pub fn block_get_client(&mut self, broadcast: Receiver<String>) {
+    pub fn event_loop(&mut self, broadcast: Receiver<Vec<u8>>) {
         loop {
-            println!("polling");
+            // broadcast data
+            if let Ok(data) = broadcast.try_recv() {
+                println!("received broadcast data");
+                self.broadcast(data);
+            }
+
             if let Err(poll_err) = self.poll.poll(&mut self.events, Some(MIN_TICK)) {
                 println!("poll error: {}", poll_err);
             }
@@ -139,33 +165,26 @@ impl ClientServer {
 
             // find new clients
             let mut new_client_requests = vec![];
-            
+
             if let Some((client, addr)) = self.try_accept() {
                 new_client_requests.push((client, addr));
             }
 
             for ev in self.events.iter() {
-                println!("{:?}", ev);
                 match ev.token() {
                     SERVER_TOKEN => (),
                     client_token => {
                         // try to pull pending client out
                         if let Some(mut pending_client) = self.pending_clients.remove(&client_token)
                         {
-                            if let Ok(valid) = pending_client.got_valid_response() {
-                                if valid {
-                                    // good data, insert into actual clients
-                                    self.connected_clients
-                                        .insert(client_token, pending_client.client);
-                                    println!("connected valid client: {:?}", client_token);
-                                } else {
-                                    println!("re-inserting invalid client: {:?}", client_token);
-                                    self.pending_clients.insert(client_token, pending_client);
-                                }
-                            } else {
-                                println!("re-inserting invalid client: {:?}", client_token);
-                                self.pending_clients.insert(client_token, pending_client);
+                            if let Ok(()) = pending_client.validate() {
+                                // good data, insert into actual clients
+                                self.connected_clients
+                                    .insert(client_token, pending_client.client);
+                                println!("connected valid client: {:?}", client_token);
+                                continue;
                             }
+                            self.pending_clients.insert(client_token, pending_client);
                         }
                     }
                 }
@@ -187,34 +206,28 @@ impl ClientServer {
                     }
                 }
             }
-
-            if let Ok(data) = broadcast.try_recv() {
-                self.broadcast(data.as_str());
-            }
         }
     }
 
     pub fn drop_pending_client(&mut self, client: &Token) -> Option<PendingClient> {
-        println!("dropping pending client: ({:?})", client);
         if let Some(mut pending) = self.pending_clients.remove(client) {
             pending.client.deregister_from_poll(&mut self.poll).unwrap();
-            return Some(pending)
+            return Some(pending);
         }
         None
     }
 
     pub fn drop_connected_client(&mut self, client: &Token) -> Option<ClientStream> {
-        println!("dropping connected client: ({:?})", client);
         self.connected_clients.remove(client)
     }
 
     // broadcast on all clients, drop dead ones
-    pub fn broadcast(&mut self, data: &str) {
+    pub fn broadcast(&mut self, data: Vec<u8>) {
         let failures: Vec<BroadcastError> = self
             .connected_clients
             .iter_mut()
             .map(|(token, client)| {
-                client.write(data).map_err(|error| BroadcastError {
+                client.write(&data).map_err(|error| BroadcastError {
                     error,
                     token: *token,
                 })
@@ -234,7 +247,8 @@ mod tests {
     use std::{
         io::{Read, Write},
         net::TcpStream,
-        thread, time::Duration,
+        thread,
+        time::Duration,
     };
 
     use crate::game::socket::{CLIENT_EXPECT, SERVER_HEADER};

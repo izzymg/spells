@@ -2,57 +2,43 @@ use std::{sync::mpsc, thread};
 
 /// snapshots of world
 use bevy::{
-    app::{FixedLast, Plugin},
-    ecs::system::{In, Query, ResMut, Resource},
+    app::{AppExit, FixedLast, Plugin},
+    ecs::{event::Events, system::{In, Query, ResMut}},
     prelude::IntoSystem,
     utils::dbg,
 };
 
+mod sender;
 use crate::game::spells::casting;
+use self::sender::ClientStreamSender;
 
-use super::socket;
+use super::{serialize, socket};
 
-#[derive(Debug)]
-pub struct CasterState {
-    pub timer: u128,
-    pub max_timer: u128,
-    pub spell_id: usize,
-}
-
-#[derive(Debug, Default)]
-pub struct WorldState {
-    pub casters: Vec<CasterState>,
-}
-
-fn create_state_sys() -> WorldState {
-    WorldState::default()
+fn create_state_sys() -> serialize::WorldState {
+    serialize::WorldState::default()
 }
 
 fn state_casters_sys(
-    In(mut world_state): In<WorldState>,
+    In(mut world_state): In<serialize::WorldState>,
     query: Query<&casting::CastingSpell>,
-) -> WorldState {
-    world_state.casters = query
-        .iter()
-        .map(|caster| CasterState {
-            max_timer: caster.cast_timer.duration().as_millis().into(),
-            spell_id: caster.spell_id.get(),
-            timer: caster.cast_timer.elapsed().as_millis().into(),
-        })
-        .collect();
+) -> serialize::WorldState {
+    world_state.casters = query.iter().map(|c| serialize::CasterState::from(c)).collect();
     world_state
 }
 
 fn broadcast_state_to_clients_sys(
-    In(world_state): In<WorldState>,
-    broadcaster: ResMut<ClientBroadcaster>,
-) -> WorldState {
-    broadcaster.0.send("FAKE STATE\n".into()).unwrap();
+    In(world_state): In<serialize::WorldState>,
+    mut sender: ResMut<ClientStreamSender>,
+    mut exit_events: ResMut<Events<AppExit>>,
+) -> serialize::WorldState {
+    println!("sending broadcast data");
+    if !sender.send_data(world_state.serialize().expect("world serialization failure")) {
+        println!("Client sender died, exiting");
+        exit_events.send(AppExit);
+    }
     world_state
 }
 
-#[derive(Resource)]
-pub struct ClientBroadcaster(mpsc::Sender<String>);
 
 pub struct WorldPlugin;
 
@@ -62,10 +48,10 @@ impl Plugin for WorldPlugin {
         let (tx, rx) = mpsc::channel();
 
         thread::spawn(move || {
-            client_getter.block_get_client(rx);
+            client_getter.event_loop(rx);
         });
 
-        app.insert_resource(ClientBroadcaster(tx)).add_systems(
+        app.insert_resource(ClientStreamSender::new(tx)).add_systems(
             FixedLast,
             create_state_sys.pipe(
                 state_casters_sys
