@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.13.1" }
+mio = { version = "0.8.11", features = ["os-poll", "net"] }

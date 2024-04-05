@@ -1,4 +1,4 @@
-use std::{error::Error, sync::mpsc, thread, time::Duration};
+use std::{error::Error, thread};
 
 /// snapshots of world
 use bevy::{
@@ -33,23 +33,12 @@ fn startup(
 pub fn run_game_server() -> Result<(), Box<dyn Error>>{
 
     // find client first
-    let client_getter = socket::ClientGetter::create()?;
-    let mut client = client_getter.block_get_client()?;
-    client.write_header()?;
-    println!("waiting for client response");
-    if !client.expect_client_response(Some(Duration::from_secs(3)))? {
-        client.shutdown()?;
-        return Err("invalid client response".into())
-    }
-    println!("OK response from client"); 
+    let mut client_getter = socket::client_getter::ClientGetter::create()?;
 
     thread::spawn(move|| {
-        loop {
-            client.write("world state xD\n".into()).unwrap();
-            thread::sleep(Duration::from_secs(2));
-        }
+        client_getter.block_get_client();
     });
-
+    
     app::App::new().add_plugins((
         MinimalPlugins,
         LogPlugin {

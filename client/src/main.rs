@@ -7,9 +7,7 @@ use std::{
 };
 
 use bevy::{
-    app::Update,
     ecs::system::NonSend,
-    DefaultPlugins,
 };
 
 const SERVER_ADDR: &str = "127.0.0.1:7776";
@@ -51,7 +49,6 @@ impl ConnectionHandler {
         let mut buf = String::new();
         loop {
             buf.clear();
-            println!("give me some bingus");
             match self.reader.read_line(&mut buf) {
                 Ok(read) => {
                     println!("read! {}", read);
@@ -140,11 +137,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             connection_handler.listen(tx);
         });
 
-        bevy::app::App::new()
-            .add_plugins(DefaultPlugins)
-            .insert_non_send_resource(ServerStateReceiver(rx))
-            .add_systems(Update, (check_world_server_data_system))
-            .run();
+        // bevy::app::App::new()
+        //     .add_plugins(DefaultPlugins)
+        //     .insert_non_send_resource(ServerStateReceiver(rx))
+        //     .add_systems(Update, (check_world_server_data_system))
+        //     .run();
         Ok(())
     }
 }
