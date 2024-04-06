@@ -22,7 +22,7 @@ impl ClientStream {
         }
     }
 
-    pub fn write(&mut self, data: &[u8]) -> io::Result<()> {
+    pub fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
         println!(
             "client stream write {}: {} bytes",
             self.ip_or_unknown(),
@@ -31,8 +31,16 @@ impl ClientStream {
         self.stream.write_all(data)
     }
 
+    /// send a 4 byte LE prefix length header then write the data
+    pub fn write_prefixed(&mut self, data: &[u8]) -> io::Result<usize> {
+        let size_prefix: u32 = data.len() as u32;
+        let header_written = self.stream.write(&size_prefix.to_le_bytes())?;
+        let data_written = self.stream.write(&data)?;
+        Ok(header_written + data_written)
+    }
+
     pub fn write_header(&mut self) -> io::Result<()> {
-        self.write(SERVER_HEADER.as_bytes())
+        self.write_all(SERVER_HEADER.as_bytes())
     }
 
     pub fn read_fill(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -55,5 +63,28 @@ impl ClientStream {
 impl Drop for ClientStream {
     fn drop(&mut self) {
         println!("dropped client: {}", self.ip_or_unknown());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::mem::size_of;
+
+    use mio::net::TcpListener;
+    use mio::net::TcpStream;
+
+    use super::ClientStream;
+
+    #[test]
+    fn test_write_prefixed() {
+        let listener = TcpListener::bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let _unused = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let client_stream = listener.accept().unwrap();
+        let mut client_stream = ClientStream::new(client_stream.0).unwrap();
+
+        let data = b"hello!";
+        let written = client_stream.write_prefixed(data).unwrap();
+        // prefixed should be len + the length of the u32 size header we prefix first
+        assert_eq!(written, data.len() + size_of::<u32>());
     }
 }

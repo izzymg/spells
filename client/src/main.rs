@@ -24,7 +24,7 @@ fn check_world_server_data_system(
     match fetch.0.try_recv() {
         Ok(msg) => match msg {
             Ok(world_state) => {
-                println!("NEW WORLD STATE {}", world_state)
+                println!("NEW WORLD STATE");
             }
             Err(err) => {
                 println!("game loop exiting: {}", err);
@@ -41,7 +41,7 @@ fn check_world_server_data_system(
     }
 }
 
-pub struct ServerStateReceiver(Receiver<io::Result<String>>);
+pub struct ServerStateReceiver(Receiver<world_connection::WorldStateConnectionResult<Vec<u8>>>);
 
 fn main() -> Result<(), Box<dyn Error>> {
     {

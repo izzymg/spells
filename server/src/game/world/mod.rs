@@ -31,7 +31,6 @@ fn broadcast_state_to_clients_sys(
     mut sender: ResMut<ClientStreamSender>,
     mut exit_events: ResMut<Events<AppExit>>,
 ) -> serialize::WorldState {
-    println!("sending broadcast data");
     if !sender.send_data(world_state.serialize().expect("world serialization failure")) {
         println!("Client sender died, exiting");
         exit_events.send(AppExit);

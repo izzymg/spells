@@ -1,14 +1,23 @@
 use std::{
-    fmt::Display, io::{self, BufRead, BufReader, BufWriter, Write}, net::{self, TcpStream}, sync::mpsc::Sender, thread, time::Duration
+    fmt::Display,
+    io::{self, BufRead, BufReader, BufWriter, Read, Write},
+    net::{self, TcpStream},
+    sync::mpsc::Sender,
+    thread,
+    time::Duration,
 };
 
 const EXPECT_SERVER_HEADER: &str = "SPELLSERVER 0.1\n";
 const CLIENT_RESPONSE: &str = "SPELLCLIENT OK 0.1\n";
+const PREFIX_BYTES: usize = 4;
+const MAX_MESSAGE_SIZE: u32 = 300;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum WorldConnectionError {
-    InvalidServer(),
-    IO(io::Error),
+    InvalidServer,
+    ConnectionEnded,
+    BigMessage(u32),
+    IO(io::ErrorKind),
 }
 
 impl std::error::Error for WorldConnectionError {}
@@ -18,9 +27,15 @@ impl Display for WorldConnectionError {
         match self {
             WorldConnectionError::IO(io_err) => {
                 write!(f, "IO error: {}", io_err)
-            },
-            WorldConnectionError::InvalidServer() => {
+            }
+            WorldConnectionError::InvalidServer => {
                 write!(f, "invalid server response")
+            }
+            WorldConnectionError::ConnectionEnded => {
+                write!(f, "server connection ended")
+            }
+            WorldConnectionError::BigMessage(size) => {
+                write!(f, "message too big: {} bytes", size)
             }
         }
     }
@@ -28,11 +43,16 @@ impl Display for WorldConnectionError {
 
 impl From<io::Error> for WorldConnectionError {
     fn from(value: io::Error) -> Self {
-        Self::IO(value)
+        if value.kind() == io::ErrorKind::UnexpectedEof {
+            Self::ConnectionEnded
+        } else {
+            Self::IO(value.kind())
+        }
     }
 }
 
-type Result<T> = std::result::Result<T, WorldConnectionError>;
+pub type WorldStateConnectionResult<T> = std::result::Result<T, WorldConnectionError>;
+type Result<T> = WorldStateConnectionResult<T>;
 
 /// Try to create a new world connection from the given address
 pub fn connect_retry(addr: &str, delay: Duration) -> Result<WorldConnection> {
@@ -43,7 +63,12 @@ pub fn connect_retry(addr: &str, delay: Duration) -> Result<WorldConnection> {
                 break s;
             }
             Err(err) => {
-                println!("failed to connect to {}, retrying ({}) in {}s", addr, err, delay.as_secs());
+                println!(
+                    "failed to connect to {}, retrying ({}) in {}s",
+                    addr,
+                    err,
+                    delay.as_secs()
+                );
                 thread::sleep(delay);
             }
         }
@@ -66,7 +91,7 @@ impl WorldConnection {
     }
 
     /// Block until data received, and return if the data matches the given.
-    fn expect(&mut self, data: &str) -> Result<bool> {
+    fn expect_line(&mut self, data: &str) -> Result<bool> {
         let mut buf = data.to_string();
         buf.clear();
         self.reader.read_line(&mut buf)?;
@@ -75,7 +100,7 @@ impl WorldConnection {
 
     /// Block until we receive the expected server header response from Spells Server.
     fn expect_header(&mut self) -> Result<bool> {
-        self.expect(EXPECT_SERVER_HEADER)
+        self.expect_line(EXPECT_SERVER_HEADER)
     }
 
     fn write_client_ok(&mut self) -> Result<()> {
@@ -86,7 +111,7 @@ impl WorldConnection {
 
     pub fn handshake(&mut self) -> Result<()> {
         if !self.expect_header()? {
-            return Err(WorldConnectionError::InvalidServer())
+            return Err(WorldConnectionError::InvalidServer);
         }
         println!("OK header from server");
         self.write_client_ok()?;
@@ -95,23 +120,81 @@ impl WorldConnection {
     }
 
     /// block until we get more state
-    pub fn listen(&mut self, tx: Sender<io::Result<String>>) -> io::Result<()> {
-        let mut buf = String::new();
+    pub fn listen(&mut self, tx: Sender<Result<Vec<u8>>>) -> Result<()> {
+        // wait for length header
+        let mut header_buffer = [0 as u8; PREFIX_BYTES];
+
         loop {
-            buf.clear();
-            match self.reader.read_line(&mut buf) {
-                Ok(read) => {
-                    if read > 0 {
-                        println!("server listen: read {} bytes", read);
-                        tx.send(Ok(buf.clone())).expect("server listen: No state receiver");
-                    } else {
-                        tx.send(Err(io::ErrorKind::UnexpectedEof.into())).expect("server listen: No state receiver");
-                    }
-                }
-                Err(err) => {
-                    return Err(err);
-                }
+            // read header
+            self.reader.read_exact(&mut header_buffer)?;
+            let message_size: u32 = u32::from_le_bytes(header_buffer);
+            println!("server listen: got header (len {} bytes)", message_size);
+
+            // read message
+            if message_size > MAX_MESSAGE_SIZE {
+                println!("big message {}", message_size);
+                return Err(WorldConnectionError::BigMessage(message_size));
             }
+
+            let mut message = vec![0; message_size as usize];
+            self.reader.read_exact(&mut message)?;
+            tx.send(Ok(message))
+                .expect("server listen: No state receiver");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        io::Write,
+        net::{TcpListener, TcpStream},
+        sync::mpsc,
+        thread,
+    };
+
+    use crate::world_connection::WorldConnectionError;
+
+    use super::WorldConnection;
+
+    struct ListenTest {
+        data: Vec<u8>
+    }
+
+    #[test]
+    fn test_listen_loop() {
+        let tests = vec![
+            ListenTest { data: "bingus".as_bytes().to_vec() },
+            ListenTest { data: "b".as_bytes().to_vec() },
+            ListenTest { data: "0".as_bytes().to_vec() },
+            ListenTest { data: vec![05] },
+            ListenTest { data: vec![05, 50, 30] },
+        ];
+
+        for test in tests {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+            let mut client_to_world_conn = WorldConnection::handle(stream).unwrap();
+            let (world_to_client_conn, _) = listener.accept().unwrap();
+
+            let message = test.data;
+            let (tx, rx) = mpsc::channel();
+
+            // write header bytes
+            (&world_to_client_conn)
+                .write(&(message.len() as u32).to_le_bytes())
+                .unwrap();
+            // write actual bytes
+            (&world_to_client_conn).write_all(&message).unwrap();
+            let handle = thread::spawn(move || {
+                return client_to_world_conn.listen(tx);
+            });
+            let val = rx.recv().unwrap().unwrap();
+            assert_eq!(val, message);
+            world_to_client_conn.shutdown(std::net::Shutdown::Both).unwrap();
+
+            let val = handle.join().unwrap();
+            assert_eq!(val.unwrap_err(), WorldConnectionError::ConnectionEnded);
         }
     }
 }

@@ -145,7 +145,6 @@ impl ClientServer {
         loop {
             // broadcast data
             if let Ok(data) = broadcast.try_recv() {
-                println!("received broadcast data");
                 self.broadcast(data);
             }
 
@@ -227,7 +226,7 @@ impl ClientServer {
             .connected_clients
             .iter_mut()
             .map(|(token, client)| {
-                client.write(&data).map_err(|error| BroadcastError {
+                client.write_prefixed(&data).map_err(|error| BroadcastError {
                     error,
                     token: *token,
                 })
