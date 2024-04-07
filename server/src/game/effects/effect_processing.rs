@@ -6,11 +6,10 @@ use bevy::{
         system::{In, IntoSystem, Query, ResMut},
     },
     hierarchy::Children,
-    log,
     utils::hashbrown::HashMap,
 };
 
-use crate::game::{auras::ShieldDamageEvent, health};
+use crate::game::{health};
 
 use super::{
     auras::{self, AuraID},
