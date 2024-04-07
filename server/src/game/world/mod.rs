@@ -9,10 +9,9 @@ use bevy::{
 };
 
 mod sender;
-use crate::game::spells::casting;
 use self::sender::ClientStreamSender;
 
-use super::{serialize, socket};
+use super::{serialize, socket, spells};
 
 fn create_state_sys() -> serialize::WorldState {
     serialize::WorldState::default()
@@ -20,7 +19,7 @@ fn create_state_sys() -> serialize::WorldState {
 
 fn state_casters_sys(
     In(mut world_state): In<serialize::WorldState>,
-    query: Query<&casting::CastingSpell>,
+    query: Query<&spells::CastingSpell>,
 ) -> serialize::WorldState {
     world_state.casters = query.iter().map(|c| serialize::CasterState::from(c)).collect();
     world_state

@@ -1,6 +1,5 @@
 use std::{
     error::Error,
-    io,
     sync::mpsc::{self, Receiver},
     time::Duration,
 };
@@ -23,7 +22,7 @@ fn check_world_server_data_system(
 ) {
     match fetch.0.try_recv() {
         Ok(msg) => match msg {
-            Ok(world_state) => {
+            Ok(_world_state) => {
                 println!("NEW WORLD STATE");
             }
             Err(err) => {

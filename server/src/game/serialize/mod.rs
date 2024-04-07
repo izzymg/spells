@@ -10,8 +10,8 @@ pub struct CasterState {
     pub spell_id: usize,
 }
 
-impl From<&spells::casting::CastingSpell> for CasterState {
-    fn from(value: &spells::casting::CastingSpell) -> Self {
+impl From<&spells::CastingSpell> for CasterState {
+    fn from(value: &spells::CastingSpell) -> Self {
         Self {
             timer: value.cast_timer.elapsed().as_millis(),
             max_timer: value.cast_timer.duration().as_millis(),

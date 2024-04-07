@@ -1,0 +1,64 @@
+<mxfile host="app.diagrams.net" modified="2024-04-07T03:26:46.898Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0" etag="NQmnVZIcEn1Qu4g_Xy5-" version="24.2.2" type="device">
+  <diagram name="Page-1" id="fDHyz_YQKnrHAQOkUFcz">
+    <mxGraphModel dx="1222" dy="768" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-1" value="&lt;div&gt;despawn_&lt;/div&gt;&lt;div&gt;finished_&lt;/div&gt;&lt;div&gt;auras&lt;br&gt;&lt;/div&gt;" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="750" y="630" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-2" value="&lt;div&gt;remove_auras&lt;/div&gt;" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="130" y="300" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-3" value="&lt;div&gt;add_auras&lt;/div&gt;" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="130" y="390" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-4" value="ticking_dmg" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="430" y="680" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-5" value="&lt;div&gt;shield_dmg&lt;/div&gt;&lt;div&gt;event&lt;br&gt;&lt;/div&gt;" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="230" y="300" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-6" value="&lt;div&gt;despawn_&lt;/div&gt;&lt;div&gt;dead&lt;br&gt;&lt;/div&gt;" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="750" y="720" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-7" value="&lt;div&gt;health_tick&lt;/div&gt;&lt;div&gt;event&lt;br&gt;&lt;/div&gt;" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="230" y="390" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-8" value="effect_queue" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="170" y="770" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-26" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="pzC-EGxq5fBsiUNjC0ZK-18" target="pzC-EGxq5fBsiUNjC0ZK-19">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-18" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;EFFECT PROCESSING&lt;br&gt;&lt;/h1&gt;&lt;p&gt;Dispatches events based on effects with a target entity.&lt;br&gt;&lt;/p&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="120" y="660" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-19" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;EFFECT&amp;nbsp; APPLICATION&lt;br&gt;&lt;/h1&gt;&lt;p&gt;Event handlers, takes entity in performs mutations.&lt;br&gt;&lt;/p&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="130" y="480" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-22" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;EFFECT CREATION&lt;br&gt;&lt;/h1&gt;&lt;p&gt;Dispatches events based on effects with a target entity. Should never directly mutate world or use commands.&lt;br&gt;&lt;/p&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="380" y="770" width="200" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-23" value="&lt;div&gt;spell_&lt;/div&gt;&lt;div&gt;application&lt;/div&gt;" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="430" y="590" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-24" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;ENTITIES&lt;br&gt;&lt;/h1&gt;&lt;p&gt;Despawns &amp;amp; adds entities to the game world.&lt;br&gt;&lt;/p&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="740" y="800" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-27" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.625;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="pzC-EGxq5fBsiUNjC0ZK-22" target="pzC-EGxq5fBsiUNjC0ZK-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-28" value="Target Validation" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="260" y="860" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-29" value="ORDERING LOST HERE!!!!" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="300" y="580" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="pzC-EGxq5fBsiUNjC0ZK-34" value="casting" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="540" y="630" width="80" height="80" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

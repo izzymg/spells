@@ -52,7 +52,7 @@ impl SpellList {
 pub(super) fn get_spell_list_resource() -> SpellList {
     SpellList(
         vec![
-            SpellData::new("Fire Ball".into(), 52500).with_target_hp(-50).with_target_aura(0.into()),
+            SpellData::new("Fire Ball".into(), 500).with_target_hp(-50).with_target_aura(0.into()),
             SpellData::new("Arcane Barrier".into(), 0).with_target_aura(1.into()).mark_friendly(),
         ]
     )

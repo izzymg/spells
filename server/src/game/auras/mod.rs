@@ -3,22 +3,19 @@ use std::{fmt, time::Duration};
 use bevy::{
     app::{FixedUpdate, Plugin},
     ecs::{
-        component::Component,
-        entity::Entity,
-        event::{Event, EventReader},
-        system::{Commands, Query, Res},
+        component::Component, entity::Entity, event::Event, schedule::IntoSystemConfigs
     },
-    hierarchy::{BuildChildren, Children, DespawnRecursiveExt},
-    log,
-    time::{Time, Timer, TimerMode},
+    time::{Timer, TimerMode},
 };
 
-use self::{shield::{ShieldDamageEvent, StatusShield}, ticking_hp::AuraTickingHealth};
+use super::ServerSets;
+const TICK_RATE: Duration = Duration::from_millis(1000);
 
 mod resource;
-pub mod shield;
-pub mod ticking_hp;
+mod effect_application;
+mod effect_creation;
 
+/// Used to look up an aura in the aura list resource.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AuraID(usize);
 
@@ -42,12 +39,12 @@ impl fmt::Display for AuraID {
 
 
 /// Possible aura types
-enum StatusEffectType {
+enum AuraType {
     TickingHP,
     Shield,
 }
 
-///T his entity has a aura, we can look up its complex data
+/// Represents one aura belonging to the parent of this entity.
 #[derive(Component)]
 pub struct Aura {
     pub id: AuraID,
@@ -55,95 +52,57 @@ pub struct Aura {
 }
 
 impl Aura {
-    pub fn get_remaining_time(&self, max_duration: Duration) -> Duration {
-        max_duration - self.duration.elapsed()
+    pub fn get_remaining_time(&self) -> Duration {
+        self.duration.duration() - self.duration.elapsed()
     }
 }
 
-/// Tick auras & remove expired
-fn tick_auras_system(
-    mut commands: Commands,
-    mut query: Query<(Entity, &mut Aura)>,
-    time: Res<Time>,
-) {
-    for (entity, mut effect) in query.iter_mut() {
-        effect.duration.tick(time.delta());
-        if effect.duration.finished() {
-            commands.entity(entity).despawn_recursive();
-        }
-    }
-}
-
-/// Request to add a aura child to the given entity
+/// Request to add an aura child to the given entity
 #[derive(Event, Debug)]
 pub struct AddAuraEvent {
     pub aura_id: AuraID,
     pub target_entity: Entity,
 }
 
-/// Request to drop a aura child from the given entity
+/// Request to drop an aura child from the given entity
 #[derive(Event, Debug)]
 pub struct RemoveAuraEvent {
     pub aura_id: AuraID,
     pub target_entity: Entity,
 }
 
-/// Process an add aura event
-fn add_status_effect_system(
-    mut ev_r: EventReader<AddAuraEvent>,
-    mut commands: Commands,
-    auras_db: resource::AuraSysResource,
-) {
-    for ev in ev_r.read() {
-        // look up status
-        if let Some(aura_data) = auras_db.get_status_effect_data(ev.aura_id) {
-            // spawn base aura
-            let base_entity = commands
-                .spawn((Aura {
-                    id: ev.aura_id,
-                    duration: Timer::new(aura_data.duration, TimerMode::Once),
-                },))
-                .id();
+/// The parent entity is shielded
+#[derive(Component)]
+pub struct ShieldAura {
+    pub value: i64,
+}
 
-            // add aura types
-            match aura_data.status_type {
-                StatusEffectType::TickingHP => {
-                    commands.entity(base_entity).insert(AuraTickingHealth::new())
-                }
-                StatusEffectType::Shield => commands
-                    .entity(base_entity)
-                    .insert(StatusShield::new(aura_data.base_multiplier)),
-            };
-
-            // parent
-            commands.entity(ev.target_entity).add_child(base_entity);
-
-            log::debug!("({:?}) gains aura {}", ev.target_entity, ev.aura_id)
+impl ShieldAura {
+    pub fn new(base_multiplier: i64) -> ShieldAura {
+        ShieldAura {
+            value: base_multiplier,
         }
     }
 }
 
-/// Process a remove aura event
-fn remove_aura_system(
-    mut ev_r: EventReader<RemoveAuraEvent>,
-    mut commands: Commands,
-    child_query: Query<&Children>,
-    status_effect_query: Query<&Aura>,
-) {
-    'event_processing: for ev in ev_r.read() {
-        // find children of entity
-        if let Ok(children) = child_query.get(ev.target_entity) {
-            for &child in children.iter() {
-                // for each child grab status
-                if let Ok(status) = status_effect_query.get(child) {
-                    if status.id == ev.aura_id {
-                        // drop one instance of this status
-                        commands.entity(child).despawn_recursive();
-                        log::debug!("removed aura ID {} ({:?})", status.id, child);
-                        continue 'event_processing;
-                    }
-                }
-            }
+/// Damage the shields of a given entity by damage
+#[derive(Event)]
+pub struct ShieldDamageEvent {
+    pub damage: i64,
+    pub entity: Entity,
+}
+
+
+/// Ticking aura that causes queues an effect on the parent each tick.
+#[derive(Component)]
+pub struct TickingEffectAura {
+    ticker: Timer,
+}
+
+impl TickingEffectAura {
+    pub fn new() -> TickingEffectAura {
+        TickingEffectAura {
+            ticker: Timer::new(TICK_RATE, TimerMode::Repeating)
         }
     }
 }
@@ -160,11 +119,8 @@ impl Plugin for AuraPlugin {
             .add_systems(
                 FixedUpdate,
                 (
-                    tick_auras_system,
-                    add_status_effect_system,
-                    remove_aura_system,
-                    ticking_hp::ticking_damage_system,
-                    shield::shield_damage_system,
+                    effect_creation::get_configs().in_set(ServerSets::EffectCreation),
+                    effect_application::get_configs().in_set(ServerSets::EffectApplication),
                 ),
             );
     }

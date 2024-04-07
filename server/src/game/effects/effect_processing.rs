@@ -1,29 +1,23 @@
 use bevy::{
-    app::{FixedUpdate, Plugin},
     ecs::{
         entity::Entity,
-        event::{Event, EventWriter, Events},
+        event::{EventWriter, Events},
+        schedule::IntoSystemConfigs,
         system::{In, IntoSystem, Query, ResMut},
     },
     hierarchy::Children,
+    log,
     utils::hashbrown::HashMap,
 };
 
-use crate::game::auras::shield::ShieldDamageEvent;
+use crate::game::{auras::ShieldDamageEvent, health};
 
 use super::{
-    auras::{self, shield, AuraID},
-    health::{self, HealthTickEvent},
+    auras::{self, AuraID},
+    EffectQueueEvent,
 };
 
-/// Queue an effect onto the target.
-#[derive(Event, Debug, Copy, Clone)]
-pub struct EffectQueueEvent {
-    pub target: Entity,
-    pub health_effect: Option<i64>,
-    pub aura_effect: Option<AuraID>,
-}
-
+/// Pass of event process & simulation.
 #[derive(Debug, Copy, Clone)]
 struct EffectPass {
     target: Entity,
@@ -40,16 +34,17 @@ impl From<EffectQueueEvent> for EffectPass {
         }
     }
 }
-
+/// Tracking simulated absorb shield effects
 #[derive(Clone, Copy)]
 struct AbsorbDamage {
     total: Option<i64>,
     remaining: i64,
 }
 
-fn get_absorb_value(
+/// Returns the current absorb value of a given entity based off its auras.
+fn get_total_entity_shielding(
     q_children: &Query<&Children>,
-    q_shields: &Query<&auras::shield::StatusShield>,
+    q_shields: &Query<&auras::ShieldAura>,
     entity: Entity,
 ) -> Option<i64> {
     q_children
@@ -60,15 +55,17 @@ fn get_absorb_value(
         .reduce(|f, v| f + v)
 }
 
-fn process_events(mut effect_queue: ResMut<Events<EffectQueueEvent>>) -> Vec<EffectPass> {
+/// Maps all effect queue events into our pass pipe.
+fn sys_process_events(mut effect_queue: ResMut<Events<EffectQueueEvent>>) -> Vec<EffectPass> {
     effect_queue.drain().map(|v| v.into()).collect()
 }
 
-fn dispatch_shields(
+/// Simulate damage to enemy shields then dispatch low level events, returning "leftover" damage to our next pass.
+fn sys_dispatch_shields(
     In(mut pass): In<Vec<EffectPass>>,
     q_children: Query<&Children>,
-    q_shields: Query<&auras::shield::StatusShield>,
-    mut shield_dmg_event_w: EventWriter<shield::ShieldDamageEvent>,
+    q_shields: Query<&auras::ShieldAura>,
+    mut shield_dmg_event_w: EventWriter<auras::ShieldDamageEvent>,
 ) -> Vec<EffectPass> {
     let mut absorb_cache: HashMap<Entity, AbsorbDamage> = HashMap::new();
 
@@ -79,7 +76,8 @@ fn dispatch_shields(
             let target_absorb = match absorb_cache.get(&effect.target) {
                 Some(&absorb) => absorb,
                 None => {
-                    let target_ab = get_absorb_value(&q_children, &q_shields, effect.target);
+                    let target_ab =
+                        get_total_entity_shielding(&q_children, &q_shields, effect.target);
                     let ab = AbsorbDamage {
                         total: target_ab,
                         remaining: target_ab.unwrap_or_default(),
@@ -114,7 +112,7 @@ fn dispatch_shields(
 
     // send all our damage events
     for (entity, absorb_cache) in absorb_cache {
-        shield_dmg_event_w.send(ShieldDamageEvent {
+        shield_dmg_event_w.send(auras::ShieldDamageEvent {
             damage: absorb_cache.total.unwrap_or(0) - absorb_cache.remaining,
             entity: entity,
         });
@@ -122,14 +120,15 @@ fn dispatch_shields(
     pass
 }
 
-fn dispatch_damage(
+/// Dispatch low level damage events.
+fn sys_dispatch_damage(
     In(second_pass): In<Vec<EffectPass>>,
     mut health_event_w: EventWriter<health::HealthTickEvent>,
     mut aura_add_event_w: EventWriter<auras::AddAuraEvent>,
 ) {
     for pass in second_pass {
         if let Some(hp) = pass.health_effect {
-            health_event_w.send(HealthTickEvent {
+            health_event_w.send(health::HealthTickEvent {
                 entity: pass.target,
                 hp,
             });
@@ -144,87 +143,8 @@ fn dispatch_damage(
     }
 }
 
-pub struct EffectQueuePlugin;
-
-impl Plugin for EffectQueuePlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
-        app.init_resource::<Events<EffectQueueEvent>>();
-        app.add_systems(
-            FixedUpdate,
-            process_events.pipe(dispatch_shields.pipe(dispatch_damage)),
-        );
-    }
-}
-
-#[cfg(test)]
-mod test {
-
-    use bevy::{
-        app::{App, Update},
-        ecs::{entity::Entity, event::Events, system::IntoSystem, world::World},
-        hierarchy::BuildWorldChildren,
-        utils,
-    };
-
-    use crate::game::{auras::shield, health};
-
-    use super::{process_events, EffectQueueEvent};
-
-    fn spawn_guy(world: &mut World) -> Entity {
-        world.spawn(health::Health { hp: 50 }).id()
-    }
-
-    fn spawn_shield(world: &mut World, parent: Entity, val: i64) {
-        let shield = world.spawn(shield::StatusShield { value: val }).id();
-        world.entity_mut(parent).add_child(shield);
-    }
-
-    struct Test {
-        events: Vec<EffectQueueEvent>,
-        shields: Vec<i64>,
-    }
-
-    #[test]
-    fn test_process_first() {
-        let mut app = App::new();
-        app.add_event::<EffectQueueEvent>();
-        app.add_systems(Update, process_events.map(utils::dbg));
-        let guy = spawn_guy(&mut app.world);
-        app.update();
-
-        let tests = vec![Test {
-            shields: vec![30, 50, 100],
-            events: vec![
-                EffectQueueEvent {
-                    health_effect: Some(-5),
-                    target: guy,
-                    aura_effect: None,
-                },
-                EffectQueueEvent {
-                    health_effect: Some(-150),
-                    target: guy,
-                    aura_effect: None,
-                },
-                EffectQueueEvent {
-                    health_effect: Some(-180),
-                    target: guy,
-                    aura_effect: None,
-                },
-            ],
-        }];
-
-        for test in tests {
-            for shield in test.shields {
-                spawn_shield(&mut app.world, guy, shield);
-            }
-
-            for ev in test.events {
-                app.world
-                    .get_resource_mut::<Events<EffectQueueEvent>>()
-                    .unwrap()
-                    .send(ev);
-            }
-            app.update();
-        }
-    }
+pub fn get_configs() -> impl IntoSystemConfigs<()> {
+    sys_process_events
+        .pipe(sys_dispatch_shields.pipe(sys_dispatch_damage))
+        .into_configs()
 }

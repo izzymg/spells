@@ -1,12 +1,24 @@
-pub mod casting;
-pub mod resource;
-pub mod spell_application;
+mod effect_creation;
+mod resource;
 
-use std::fmt;
+use std::{fmt, time::Duration};
 
 use bevy::{
     app::{FixedUpdate, Plugin},
-    ecs::schedule::IntoSystemConfigs,
+    ecs::{
+        component::Component,
+        entity::Entity,
+        event::{Event, EventReader, EventWriter},
+        schedule::IntoSystemConfigs,
+        system::{Commands, Query, Res},
+    },
+    log,
+    time::{Time, Timer},
+};
+
+use super::{
+    alignment::{self, Hostility},
+    ServerSets,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,24 +42,135 @@ impl fmt::Display for SpellID {
     }
 }
 
-pub struct SpellsPlugin;
+#[derive(Event)]
+pub struct StartCastingEvent {
+    pub entity: Entity,
+    pub target: Entity,
+    pub spell_id: SpellID,
+}
 
-pub use casting::StartCastingEvent;
+impl StartCastingEvent {
+    pub fn new(entity: Entity, target: Entity, spell_id: SpellID) -> Self {
+        Self {
+            entity,
+            target,
+            spell_id,
+        }
+    }
+}
+
+// Unit is casting a spell
+#[derive(Debug, Component)]
+pub struct CastingSpell {
+    pub spell_id: SpellID,
+    pub target: Entity,
+    pub cast_timer: Timer,
+}
+
+impl CastingSpell {
+    fn new(spell_id: SpellID, target: Entity, cast_time: Duration) -> CastingSpell {
+        CastingSpell {
+            spell_id,
+            target,
+            cast_timer: Timer::new(cast_time, bevy::time::TimerMode::Once),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Event)]
+pub struct SpellApplicationEvent {
+    pub origin: Entity,
+    pub target: Entity,
+    pub spell_id: SpellID,
+}
+
+/// Begin spell casts when event received.
+fn sys_start_casting_ev(
+    mut events: EventReader<StartCastingEvent>,
+    mut commands: Commands,
+    spell_list: Res<resource::SpellList>,
+) {
+    for ev in events.read() {
+        if let Some(spell) = spell_list.get_spell_data(ev.spell_id) {
+            log::debug!("{:?} starts casting spell {}", ev.entity, spell.name);
+            commands.entity(ev.entity).insert(CastingSpell::new(
+                ev.spell_id,
+                ev.target,
+                spell.cast_time,
+            ));
+        } else {
+            log::error!("no spell {}", ev.spell_id);
+        }
+    }
+}
+
+/// Process spellcasts that have finished.
+fn sys_finish_casts(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut CastingSpell, Option<&alignment::FactionMember>)>,
+    spell_list: Res<resource::SpellList>,
+    faction_checker: alignment::FactionChecker,
+    mut spell_app_ev_w: EventWriter<SpellApplicationEvent>,
+) {
+    for (entity, casting, faction_member) in query.iter_mut() {
+        if !casting.cast_timer.finished() {
+            continue;
+        }
+        commands.entity(entity).remove::<CastingSpell>();
+
+        let mut push = || {
+            // send spell application events
+            spell_app_ev_w.send(SpellApplicationEvent {
+                origin: entity,
+                spell_id: casting.spell_id,
+                target: casting.target,
+            });
+        };
+
+        let spell = spell_list.get_spell_data(casting.spell_id).unwrap();
+        let is_selfcast = entity == casting.target;
+        if is_selfcast && spell.hostility == Hostility::Friendly {
+            // allow friendly self-casts immediately
+            push();
+        }
+
+        if let Some(caster_faction) = faction_member {
+            let target_faction = faction_checker
+                .get_entity_faction(casting.target)
+                .unwrap_or_default();
+            if alignment::is_valid_target(spell.hostility, caster_faction.0, target_faction) {
+                // allow valid
+                push();
+            }
+        } else if spell.hostility == Hostility::Hostile {
+            // allow hostile when factionless
+            push();
+        }
+    }
+}
+
+// Tick spell casts and push finished casts to spell application.
+fn sys_tick_casts(time: Res<Time>, mut query: Query<&mut CastingSpell>) {
+    for mut casting in query.iter_mut() {
+        casting.cast_timer.tick(time.delta());
+    }
+}
+
+pub struct SpellsPlugin;
 
 impl Plugin for SpellsPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.insert_resource(resource::get_spell_list_resource())
-            .add_event::<casting::StartCastingEvent>()
-            .add_event::<spell_application::SpellApplicationEvent>()
-            .add_systems(
-                FixedUpdate,
-                (
-                    casting::handle_start_casting_event_system,
-                    casting::tick_cast_system,
-                    casting::check_finished_casts_system,
-                    spell_application::handle_spell_applications_system
-                )
-                    .chain(),
-            );
+
+        app.add_systems(
+            FixedUpdate,
+            (
+                (sys_start_casting_ev, sys_finish_casts, sys_tick_casts).chain(),
+                effect_creation::get_configs().in_set(ServerSets::EffectCreation),
+            ).chain());
+
+        app
+            .insert_resource(resource::get_spell_list_resource())
+            .add_event::<StartCastingEvent>()
+            .add_event::<SpellApplicationEvent>();
     }
 }

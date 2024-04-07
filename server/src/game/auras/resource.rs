@@ -20,11 +20,11 @@ pub(super) struct AuraData {
     pub name: String,
     pub base_multiplier: i64,
     pub duration: Duration,
-    pub status_type: super::StatusEffectType,
+    pub status_type: super::AuraType,
 }
 
 impl AuraData {
-    pub(super) fn new(name: String, base_multiplier: i64, duration: Duration, status_type: super::StatusEffectType) -> AuraData {
+    pub(super) fn new(name: String, base_multiplier: i64, duration: Duration, status_type: super::AuraType) -> AuraData {
         AuraData {
             name,
             base_multiplier,
@@ -40,7 +40,7 @@ pub(super) struct AuraDatabase(Vec<AuraData>);
 
 pub(super) fn get_resource() -> AuraDatabase {
     AuraDatabase(vec![
-        AuraData::new("Immolated".into(), -5, Duration::from_secs(10), crate::game::auras::StatusEffectType::TickingHP),
-        AuraData::new("Arcane Shield".into(), 100, Duration::from_secs(5), crate::game::auras::StatusEffectType::Shield),
+        AuraData::new("Immolated".into(), -5, Duration::from_secs(10), crate::game::auras::AuraType::TickingHP),
+        AuraData::new("Arcane Shield".into(), 100, Duration::from_secs(5), crate::game::auras::AuraType::Shield),
     ])
 }

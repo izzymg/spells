@@ -1,24 +1,24 @@
+mod entity_processing;
+mod effect_applications;
+
 use bevy::{
     app::{FixedUpdate, Plugin},
     ecs::{
         component::Component,
         entity::Entity,
-        event::{Event, EventReader},
-        schedule::IntoSystemConfigs,
-        system::{Commands, Query},
+        event::Event, schedule::IntoSystemConfigs,
     },
-    hierarchy::DespawnRecursiveExt,
-    log,
 };
 
+use super::ServerSets;
 
 pub struct HealthPlugin;
 
 impl Plugin for HealthPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_event::<HealthTickEvent>()
-            .add_systems(FixedUpdate, death_system.before(health_tick_system))
-            .add_systems(FixedUpdate, health_tick_system);
+        app.add_event::<HealthTickEvent>();
+        app.add_systems(FixedUpdate, entity_processing::get_config().in_set(ServerSets::EntityProcessing));
+        app.add_systems(FixedUpdate, effect_applications::get_config().in_set(ServerSets::EffectApplication));
     }
 }
 
@@ -34,30 +34,9 @@ impl Health {
     }
 }
 
+/// Entity's health should be mutated by hp
 #[derive(Debug, Event)]
 pub struct HealthTickEvent {
     pub entity: Entity,
     pub hp: i64,
-}
-
-/// Kills entities with no health
-fn death_system(mut commands: Commands, query: Query<(Entity, &Health)>) {
-    for (entity, health) in query.iter() {
-        if health.hp <= 0 {
-            commands.entity(entity).despawn_recursive();
-        }
-    }
-}
-
-/// Ticks all HealthTick entities
-fn health_tick_system(
-    mut ev_health_tick: EventReader<HealthTickEvent>,
-    mut q_health: Query<&mut Health>,
-) {
-    for ev in ev_health_tick.read() {
-        if let Ok(mut health) = q_health.get_mut(ev.entity) {
-            health.hp += ev.hp;
-            log::debug!("{:?} ticked for {} hp: {}", ev.entity, ev.hp, health.hp);
-        }
-    }
 }
