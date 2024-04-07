@@ -17,7 +17,7 @@ use bevy::{
 };
 
 use super::{
-    alignment::{self, Hostility},
+    alignment::{self, Faction, FactionMember, Hostility},
     ServerSets,
 };
 
@@ -84,7 +84,7 @@ pub struct SpellApplicationEvent {
     pub spell_id: SpellID,
 }
 
-/// Begin spell casts when event received.
+/// Begin spell casts when event received
 fn sys_start_casting_ev(
     mut events: EventReader<StartCastingEvent>,
     mut commands: Commands,
@@ -104,52 +104,68 @@ fn sys_start_casting_ev(
     }
 }
 
-/// Process spellcasts that have finished.
-fn sys_finish_casts(
-    mut commands: Commands,
+
+// Remove invalid targets on casts
+fn sys_validate_cast_targets(
     mut query: Query<(Entity, &mut CastingSpell, Option<&alignment::FactionMember>)>,
     spell_list: Res<resource::SpellList>,
     faction_checker: alignment::FactionChecker,
-    mut spell_app_ev_w: EventWriter<SpellApplicationEvent>,
+    mut commands: Commands,
 ) {
     for (entity, casting, faction_member) in query.iter_mut() {
+        let spell = spell_list.get_spell_data(casting.spell_id).unwrap();
+        let is_selfcast = entity == casting.target;
+        // allow self friendly
+        if is_selfcast && spell.hostility == Hostility::Friendly {
+            continue;
+        }
+
+        // check factions (default is OK)
+        let caster_faction = match faction_member {
+            Some(member) => member.0,
+            None => Faction::default(),
+        };
+        let target_faction = faction_checker
+            .get_entity_faction(casting.target)
+            .unwrap_or_default();
+        if !is_selfcast
+            && alignment::is_valid_target(spell.hostility, caster_faction, target_faction)
+        {
+            continue;
+        }
+        // disallow all else
+        log::info!(
+            "{:?} invalid target {:?} for spell {}",
+            entity,
+            casting.target,
+            casting.spell_id
+        );
+        commands.entity(entity).remove::<CastingSpell>();
+    }
+}
+
+/// Send spell application events for finished casts
+fn sys_finish_casts(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut CastingSpell)>,
+    mut spell_app_ev_w: EventWriter<SpellApplicationEvent>,
+) {
+    for (entity, casting) in query.iter_mut() {
         if !casting.cast_timer.finished() {
             continue;
         }
         commands.entity(entity).remove::<CastingSpell>();
 
-        let mut push = || {
-            // send spell application events
-            spell_app_ev_w.send(SpellApplicationEvent {
-                origin: entity,
-                spell_id: casting.spell_id,
-                target: casting.target,
-            });
-        };
-
-        let spell = spell_list.get_spell_data(casting.spell_id).unwrap();
-        let is_selfcast = entity == casting.target;
-        if is_selfcast && spell.hostility == Hostility::Friendly {
-            // allow friendly self-casts immediately
-            push();
-        }
-
-        if let Some(caster_faction) = faction_member {
-            let target_faction = faction_checker
-                .get_entity_faction(casting.target)
-                .unwrap_or_default();
-            if alignment::is_valid_target(spell.hostility, caster_faction.0, target_faction) {
-                // allow valid
-                push();
-            }
-        } else if spell.hostility == Hostility::Hostile {
-            // allow hostile when factionless
-            push();
-        }
+        // send spell application events
+        spell_app_ev_w.send(SpellApplicationEvent {
+            origin: entity,
+            spell_id: casting.spell_id,
+            target: casting.target,
+        });
     }
 }
 
-// Tick spell casts and push finished casts to spell application.
+// Tick spell casts
 fn sys_tick_casts(time: Res<Time>, mut query: Query<&mut CastingSpell>) {
     for mut casting in query.iter_mut() {
         casting.cast_timer.tick(time.delta());
@@ -160,16 +176,16 @@ pub struct SpellsPlugin;
 
 impl Plugin for SpellsPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-
         app.add_systems(
             FixedUpdate,
             (
-                (sys_start_casting_ev, sys_finish_casts, sys_tick_casts).chain(),
+                (sys_start_casting_ev, sys_tick_casts, sys_validate_cast_targets, sys_finish_casts, ).chain(),
                 effect_creation::get_configs().in_set(ServerSets::EffectCreation),
-            ).chain());
+            )
+                .chain(),
+        );
 
-        app
-            .insert_resource(resource::get_spell_list_resource())
+        app.insert_resource(resource::get_spell_list_resource())
             .add_event::<StartCastingEvent>()
             .add_event::<SpellApplicationEvent>();
     }

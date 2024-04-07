@@ -2,7 +2,7 @@
 
 use bevy::ecs::{component::Component, entity::Entity, system::{Query, SystemParam}};
 
-type Faction = u8;
+pub type Faction = u8;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Hostility {
