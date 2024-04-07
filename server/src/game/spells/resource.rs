@@ -6,7 +6,7 @@ use crate::game::{alignment::{self, Hostility}, auras};
 use super::SpellID;
 
 #[derive(Default, Debug)]
-pub(super) struct SpellData {
+pub struct SpellData {
     pub name: String,
     pub cast_time: Duration,
     pub hostility: alignment::Hostility,
@@ -15,7 +15,7 @@ pub(super) struct SpellData {
 }
 
 impl SpellData {
-    fn new(name: String, cast_ms: u64) -> Self {
+    pub fn new(name: String, cast_ms: u64) -> Self {
         Self {
             name: name,
             cast_time: Duration::from_millis(cast_ms),
@@ -23,17 +23,17 @@ impl SpellData {
         }
     }
     
-    fn with_target_hp(mut self, hp: i64) -> Self {
+    pub fn with_target_hp(mut self, hp: i64) -> Self {
         self.target_health_effect = Some(hp);
         self
     }
 
-    fn with_target_aura(mut self, aura: auras::AuraID) -> Self {
+    pub fn with_target_aura(mut self, aura: auras::AuraID) -> Self {
         self.target_aura_effect = Some(aura);
         self
     }
 
-    fn mark_friendly(mut self) -> Self {
+    pub fn mark_friendly(mut self) -> Self {
         self.hostility = Hostility::Friendly;
         self
     }
@@ -41,15 +41,15 @@ impl SpellData {
 }
 
 #[derive(Resource)]
-pub(super) struct SpellList(pub Vec<SpellData>);
+pub struct SpellList(pub Vec<SpellData>);
 
 impl SpellList {
-    pub(super) fn get_spell_data(&self, id: SpellID) -> Option<&SpellData> {
+    pub fn get_spell_data(&self, id: SpellID) -> Option<&SpellData> {
         self.0.get(id.get())
     }
 }
 
-pub(super) fn get_spell_list_resource() -> SpellList {
+pub fn get_spell_list_resource() -> SpellList {
     SpellList(
         vec![
             SpellData::new("Fire Ball".into(), 500).with_target_hp(-50).with_target_aura(0.into()),

@@ -11,7 +11,7 @@ use bevy::{
 use super::ServerSets;
 const TICK_RATE: Duration = Duration::from_millis(1000);
 
-mod resource;
+pub mod resource;
 mod effect_application;
 mod effect_creation;
 
@@ -39,7 +39,7 @@ impl fmt::Display for AuraID {
 
 
 /// Possible aura types
-enum AuraType {
+pub enum AuraType {
     TickingHP,
     Shield,
 }

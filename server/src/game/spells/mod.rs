@@ -1,5 +1,5 @@
 mod effect_creation;
-mod resource;
+pub mod resource;
 
 use std::{fmt, time::Duration};
 
@@ -17,7 +17,7 @@ use bevy::{
 };
 
 use super::{
-    alignment::{self, Faction, FactionMember, Hostility},
+    alignment::{self, Faction, Hostility},
     ServerSets,
 };
 
@@ -42,6 +42,7 @@ impl fmt::Display for SpellID {
     }
 }
 
+/// Unit should start casting `spell_id` at `target`
 #[derive(Event)]
 pub struct StartCastingEvent {
     pub entity: Entity,
@@ -77,6 +78,7 @@ impl CastingSpell {
     }
 }
 
+/// `spell_id` should be applied to `target`
 #[derive(Clone, Copy, Debug, Event)]
 pub struct SpellApplicationEvent {
     pub origin: Entity,
@@ -103,7 +105,6 @@ fn sys_start_casting_ev(
         }
     }
 }
-
 
 // Remove invalid targets on casts
 fn sys_validate_cast_targets(
@@ -144,7 +145,7 @@ fn sys_validate_cast_targets(
     }
 }
 
-/// Send spell application events for finished casts
+/// Send a `SpellApplicationEvent` for finished casts
 fn sys_finish_casts(
     mut commands: Commands,
     mut query: Query<(Entity, &mut CastingSpell)>,
@@ -179,7 +180,13 @@ impl Plugin for SpellsPlugin {
         app.add_systems(
             FixedUpdate,
             (
-                (sys_start_casting_ev, sys_tick_casts, sys_validate_cast_targets, sys_finish_casts, ).chain(),
+                (
+                    sys_start_casting_ev,
+                    sys_tick_casts,
+                    sys_validate_cast_targets,
+                    sys_finish_casts,
+                )
+                    .chain(),
                 effect_creation::get_configs().in_set(ServerSets::EffectCreation),
             )
                 .chain(),
@@ -189,4 +196,64 @@ impl Plugin for SpellsPlugin {
             .add_event::<StartCastingEvent>()
             .add_event::<SpellApplicationEvent>();
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::game::alignment::FactionMember;
+
+    use super::{
+        resource::{SpellData, SpellList},
+        sys_validate_cast_targets, CastingSpell,
+    };
+    use bevy::{
+        app::{self, Update},
+        time::Timer,
+    };
+
+    /// test spell target validation
+    macro_rules! target_validation {
+        ($name:ident, $s:expr, $c:expr, $t:expr, $e:expr) => {
+            #[test]
+            fn $name() {
+                let mut app = app::App::new();
+                app.insert_resource(SpellList {
+                    0: vec![
+                        SpellData::new("hostile".into(), 0),
+                        SpellData::new("friendly".into(), 0).mark_friendly(),
+                    ],
+                });
+                app.add_systems(Update, sys_validate_cast_targets);
+                let target = app.world.spawn(FactionMember($c)).id();
+                // caster
+                let caster = app
+                    .world
+                    .spawn((
+                        FactionMember($t),
+                        CastingSpell {
+                            cast_timer: Timer::from_seconds(1.0, bevy::time::TimerMode::Once),
+                            spell_id: $s,
+                            target: target,
+                        },
+                    ))
+                    .id();
+
+                // tick our validation system
+                app.update();
+
+                let still_casting = app.world.get::<CastingSpell>(caster);
+                assert_eq!($e, still_casting.is_some());
+            }
+        };
+    }
+
+    target_validation!(hostile_share_faction, 0.into(), 0b101, 0b011, false);
+    target_validation!(hostile_target_no_faction, 0.into(), 0b001, 0b000, true);
+    target_validation!(hostile_caster_no_faction, 0.into(), 0b000, 0b001, true);
+    target_validation!(hostile_no_factions, 0.into(), 0b000, 0b000, true);
+
+    target_validation!(friendly_share_faction, 1.into(), 0b101, 0b011, true);
+    target_validation!(friendly_target_no_faction, 1.into(), 0b001, 0b000, false);
+    target_validation!(friendly_caster_no_faction, 1.into(), 0b000, 0b001, false);
+    target_validation!(friendly_no_factions, 1.into(), 0b000, 0b000, false);
 }
