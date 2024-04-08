@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use std::{io, time};
 
 use super::client_stream::ClientStream;
+
 use super::CLIENT_EXPECT;
 
 const SERVER_ADDR: &str = "0.0.0.0:7776";
@@ -17,7 +18,7 @@ const PENDING_TIMEOUT: Duration = Duration::from_millis(4000); // how long to wa
 const MIN_TICK: Duration = Duration::from_millis(250); // how often at minimum we should check for pending clients, clean up dead connectios
 
 #[derive(Debug)]
-pub struct PendingClient {
+struct PendingClient {
     created_at: time::Instant,
     client: ClientStream,
 }
@@ -116,30 +117,6 @@ impl ClientServer {
         })
     }
 
-    /// try to accept a client on the listener
-    pub fn try_accept(&self) -> Option<(ClientStream, SocketAddr)> {
-        if let Ok((stream, addr)) = self.listener.accept() {
-            return match ClientStream::new(stream) {
-                Ok(client) => Some((client, addr)),
-                Err(err) => {
-                    println!("failed to create client stream {}", err);
-                    None
-                }
-            };
-        }
-        None
-    }
-
-    /// allocate an ID for the client and assign them to pending clients
-    pub fn pend_new_client(&mut self, mut client: ClientStream) -> io::Result<()> {
-        let token = Token(self.next_socket);
-        client.register_to_poll(token, &mut self.poll)?;
-        self.next_socket += 1; // todo: decouple from token/next socket so we don't push this up for every req?
-        self.pending_clients
-            .insert(token, PendingClient::new(client));
-        Ok(())
-    }
-
     /// block on event look waiting for new clients, adding them by their token to a map of active cleint
     pub fn event_loop(&mut self, broadcast: Receiver<Vec<u8>>) {
         loop {
@@ -208,28 +185,18 @@ impl ClientServer {
         }
     }
 
-    pub fn drop_pending_client(&mut self, client: &Token) -> Option<PendingClient> {
-        if let Some(mut pending) = self.pending_clients.remove(client) {
-            pending.client.deregister_from_poll(&mut self.poll).unwrap();
-            return Some(pending);
-        }
-        None
-    }
-
-    pub fn drop_connected_client(&mut self, client: &Token) -> Option<ClientStream> {
-        self.connected_clients.remove(client)
-    }
-
     // broadcast on all clients, drop dead ones
     pub fn broadcast(&mut self, data: Vec<u8>) {
         let failures: Vec<BroadcastError> = self
             .connected_clients
             .iter_mut()
             .map(|(token, client)| {
-                client.write_prefixed(&data).map_err(|error| BroadcastError {
-                    error,
-                    token: *token,
-                })
+                client
+                    .write_prefixed(&data)
+                    .map_err(|error| BroadcastError {
+                        error,
+                        token: *token,
+                    })
             })
             .filter_map(|v| v.is_err().then(|| v.unwrap_err()))
             .collect();
@@ -239,30 +206,64 @@ impl ClientServer {
             self.drop_connected_client(&failure.token);
         }
     }
+
+    /// try to accept a client on the listener
+    fn try_accept(&self) -> Option<(ClientStream, SocketAddr)> {
+        if let Ok((stream, addr)) = self.listener.accept() {
+            return match ClientStream::new(stream) {
+                Ok(client) => Some((client, addr)),
+                Err(err) => {
+                    println!("failed to create client stream {}", err);
+                    None
+                }
+            };
+        }
+        None
+    }
+
+    /// allocate an ID for the client and assign them to pending clients
+    fn pend_new_client(&mut self, mut client: ClientStream) -> io::Result<()> {
+        let token = Token(self.next_socket);
+        client.register_to_poll(token, &mut self.poll)?;
+        self.next_socket += 1; // todo: decouple from token/next socket so we don't push this up for every req?
+        self.pending_clients
+            .insert(token, PendingClient::new(client));
+        Ok(())
+    }
+
+    fn drop_pending_client(&mut self, client: &Token) -> Option<PendingClient> {
+        if let Some(mut pending) = self.pending_clients.remove(client) {
+            pending.client.deregister_from_poll(&mut self.poll).unwrap();
+            return Some(pending);
+        }
+        None
+    }
+
+    fn drop_connected_client(&mut self, client: &Token) -> Option<ClientStream> {
+        self.connected_clients.remove(client)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::{
-        io::{Read, Write},
-        net::TcpStream,
-        thread,
-        time::Duration,
+        io::{Read, Write}, net::TcpStream, sync::mpsc, thread, time::Duration
     };
 
-    use crate::game::socket::{CLIENT_EXPECT, SERVER_HEADER};
+    use super::{super::{CLIENT_EXPECT, SERVER_HEADER}, ClientServer};
 
     #[test]
     fn test_getter() {
-        // let mut client_getter = ClientGetter::create().unwrap();
-        // // create a client stream
-        // // create a thread that blocks & fetches our clients
-        // // assert we grab the server header correctly
-        // // panic the thread if it doesn't process the client
+        let mut client_getter = ClientServer::create().unwrap();
+        // create a client stream
+        // create a thread that blocks & fetches our clients
+        // assert we grab the server header correctly
+        // panic the thread if it doesn't process the client
 
-        // let handle = thread::spawn(move || {
-        //     client_getter.block_get_client();
-        // });
+        let (_, rx) = mpsc::channel();
+        thread::spawn(move || {
+            client_getter.event_loop(rx);
+        });
 
         {
             let mut stream = TcpStream::connect("127.0.0.1:7776").unwrap();

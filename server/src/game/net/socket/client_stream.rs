@@ -5,12 +5,12 @@ use mio::{Interest, Token};
 use super::SERVER_HEADER;
 
 #[derive(Debug)]
-pub struct ClientStream {
+pub(super) struct ClientStream {
     stream: mio::net::TcpStream,
 }
 
 impl ClientStream {
-    pub fn new(stream: mio::net::TcpStream) -> io::Result<Self> {
+    pub(super) fn new(stream: mio::net::TcpStream) -> io::Result<Self> {
         Ok(Self { stream })
     }
 
@@ -22,7 +22,7 @@ impl ClientStream {
         }
     }
 
-    pub fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
+    pub(super) fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
         println!(
             "client stream write {}: {} bytes",
             self.ip_or_unknown(),
@@ -32,22 +32,26 @@ impl ClientStream {
     }
 
     /// send a 4 byte LE prefix length header then write the data
-    pub fn write_prefixed(&mut self, data: &[u8]) -> io::Result<usize> {
+    pub(super) fn write_prefixed(&mut self, data: &[u8]) -> io::Result<usize> {
         let size_prefix: u32 = data.len() as u32;
         let header_written = self.stream.write(&size_prefix.to_le_bytes())?;
         let data_written = self.stream.write(&data)?;
         Ok(header_written + data_written)
     }
 
-    pub fn write_header(&mut self) -> io::Result<()> {
+    pub(super) fn write_header(&mut self) -> io::Result<()> {
         self.write_all(SERVER_HEADER.as_bytes())
     }
 
-    pub fn read_fill(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    pub(super) fn read_fill(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.stream.read(buf)
     }
 
-    pub fn register_to_poll(&mut self, token: Token, poll: &mut mio::Poll) -> io::Result<()> {
+    pub(super) fn register_to_poll(
+        &mut self,
+        token: Token,
+        poll: &mut mio::Poll,
+    ) -> io::Result<()> {
         poll.registry().register(
             &mut self.stream,
             token,
@@ -55,7 +59,7 @@ impl ClientStream {
         )
     }
 
-    pub fn deregister_from_poll(&mut self, poll: &mut mio::Poll) -> io::Result<()> {
+    pub(super) fn deregister_from_poll(&mut self, poll: &mut mio::Poll) -> io::Result<()> {
         poll.registry().deregister(&mut self.stream)
     }
 }

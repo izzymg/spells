@@ -1,19 +1,13 @@
-use bevy::{
-    ecs::{
-        entity::Entity,
-        event::{EventWriter, Events},
-        schedule::IntoSystemConfigs,
-        system::{Query, Res, ResMut, SystemParam},
-    },
-    hierarchy::Children, log,
-};
+use bevy::{ecs::system::SystemParam, log, prelude::*};
 
-use crate::game::{auras, health, events};
+use crate::game::{components, events};
+
+use super::ServerSets;
 
 #[derive(SystemParam)]
 struct ShieldQuery<'w, 's> {
     query_children: Query<'w, 's, &'static Children>,
-    query_shields: Query<'w, 's, &'static mut auras::ShieldAura>,
+    query_shields: Query<'w, 's, &'static mut components::ShieldAura>,
 }
 
 impl<'w, 's> ShieldQuery<'w, 's> {
@@ -44,7 +38,7 @@ impl<'w, 's> ShieldQuery<'w, 's> {
 
 #[derive(SystemParam)]
 struct HealthQuery<'w, 's> {
-    query_health: Query<'w, 's, &'static mut health::Health>,
+    query_health: Query<'w, 's, &'static mut components::Health>,
 }
 
 impl<'w, 's> HealthQuery<'w, 's> {
@@ -84,11 +78,11 @@ fn sys_process_damage_effects(
 /// Process aura events
 fn sys_process_aura_effects(
     effect_events: Res<Events<events::EffectQueueEvent>>,
-    mut ev_w: EventWriter<auras::AddAuraEvent>,
+    mut ev_w: EventWriter<events::AddAuraEvent>,
 ) {
     for effect in effect_events.get_reader().read(&effect_events) {
         if let Some(aura) = effect.aura_effect {
-            ev_w.send(auras::AddAuraEvent {
+            ev_w.send(events::AddAuraEvent {
                 aura_id: aura,
                 target_entity: effect.target,
             });
@@ -101,14 +95,21 @@ fn sys_drain_effect_evs(mut effect_events: ResMut<Events<events::EffectQueueEven
     log::debug!("clearing effect processing tick");
 }
 
-pub fn get_configs() -> impl IntoSystemConfigs<()> {
-    (
-        sys_process_damage_effects,
-        sys_process_aura_effects,
-        sys_drain_effect_evs,
-    )
-        .chain()
-        .into_configs()
+pub struct EffectPlugin;
+impl Plugin for EffectPlugin {
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.init_resource::<Events<events::EffectQueueEvent>>();
+        app.add_systems(
+            FixedUpdate,
+            (
+                sys_process_damage_effects,
+                sys_process_aura_effects,
+                sys_drain_effect_evs,
+            )
+                .chain()
+                .in_set(ServerSets::EffectProcessing),
+        );
+    }
 }
 
 #[cfg(test)]
@@ -120,7 +121,7 @@ mod tests {
         hierarchy::BuildWorldChildren,
     };
 
-    use crate::game::{auras, events::{self, EffectQueueEvent}, health};
+    use crate::game::{components, events};
 
     use super::sys_process_damage_effects;
 
@@ -137,9 +138,12 @@ mod tests {
         app.init_resource::<Events<events::EffectQueueEvent>>();
         app.add_systems(Update, sys_process_damage_effects);
 
-        let skele = app.world.spawn(health::Health { hp }).id();
+        let skele = app.world.spawn(components::Health { hp }).id();
         for shield in shields {
-            let child = app.world.spawn(auras::ShieldAura { value: shield }).id();
+            let child = app
+                .world
+                .spawn(components::ShieldAura { value: shield })
+                .id();
             app.world.entity_mut(skele).add_child(child);
         }
 
@@ -147,7 +151,7 @@ mod tests {
             app.world
                 .get_resource_mut::<Events<events::EffectQueueEvent>>()
                 .unwrap()
-                .send(EffectQueueEvent {
+                .send(events::EffectQueueEvent {
                     aura_effect: None,
                     health_effect: Some(hit),
                     target: skele,
@@ -155,7 +159,7 @@ mod tests {
         }
         app.update();
 
-        let remaining_hp = app.world.get::<health::Health>(skele).unwrap().hp;
+        let remaining_hp = app.world.get::<components::Health>(skele).unwrap().hp;
         assert_eq!(remaining_hp, expect_hp);
     }
 }

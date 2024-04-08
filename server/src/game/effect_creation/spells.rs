@@ -1,78 +1,23 @@
-mod effect_creation;
-pub mod resource;
+use bevy::{log, prelude::*};
 
-use std::{fmt, time::Duration};
-
-use bevy::{
-    app::{FixedUpdate, Plugin},
-    ecs::{
-        component::Component,
-        entity::Entity,
-        event::{EventReader, EventWriter},
-        schedule::IntoSystemConfigs,
-        system::{Commands, Query, Res},
-    },
-    log,
-    time::{Time, Timer},
-};
-
-use crate::game::{
-    alignment::{self, Faction, Hostility}, events, ServerSets
-};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SpellID(usize);
-
-impl SpellID {
-    pub fn get(self) -> usize {
-        self.0
-    }
-}
-
-impl From<usize> for SpellID {
-    fn from(value: usize) -> Self {
-        Self(value)
-    }
-}
-
-impl fmt::Display for SpellID {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(SPELL:{})", self.0)
-    }
-}
-
-// Unit is casting a spell
-#[derive(Debug, Component)]
-pub struct CastingSpell {
-    pub spell_id: SpellID,
-    pub target: Entity,
-    pub cast_timer: Timer,
-}
-
-impl CastingSpell {
-    fn new(spell_id: SpellID, target: Entity, cast_time: Duration) -> CastingSpell {
-        CastingSpell {
-            spell_id,
-            target,
-            cast_timer: Timer::new(cast_time, bevy::time::TimerMode::Once),
-        }
-    }
-}
+use crate::game::{assets, components, events};
 
 /// Begin spell casts when event received
-fn sys_start_casting_ev(
+pub(super) fn sys_start_casting_ev(
     mut events: EventReader<events::StartCastingEvent>,
     mut commands: Commands,
-    spell_list: Res<resource::SpellList>,
+    spell_list: Res<assets::SpellList>,
 ) {
     for ev in events.read() {
         if let Some(spell) = spell_list.get_spell_data(ev.spell_id) {
             log::debug!("{:?} starts casting spell {}", ev.entity, spell.name);
-            commands.entity(ev.entity).insert(CastingSpell::new(
-                ev.spell_id,
-                ev.target,
-                spell.cast_time,
-            ));
+            commands
+                .entity(ev.entity)
+                .insert(components::CastingSpell::new(
+                    ev.spell_id,
+                    ev.target,
+                    spell.cast_time,
+                ));
         } else {
             log::error!("no spell {}", ev.spell_id);
         }
@@ -80,30 +25,34 @@ fn sys_start_casting_ev(
 }
 
 // Remove invalid targets on casts
-fn sys_validate_cast_targets(
-    mut query: Query<(Entity, &mut CastingSpell, Option<&alignment::FactionMember>)>,
-    spell_list: Res<resource::SpellList>,
-    faction_checker: alignment::FactionChecker,
+pub(super) fn sys_validate_cast_targets(
+    mut query: Query<(
+        Entity,
+        &mut components::CastingSpell,
+        Option<&components::FactionMember>,
+    )>,
+    spell_list: Res<assets::SpellList>,
+    faction_checker: components::FactionChecker,
     mut commands: Commands,
 ) {
     for (entity, casting, faction_member) in query.iter_mut() {
         let spell = spell_list.get_spell_data(casting.spell_id).unwrap();
         let is_selfcast = entity == casting.target;
         // allow self friendly
-        if is_selfcast && spell.hostility == Hostility::Friendly {
+        if is_selfcast && spell.hostility == components::Hostility::Friendly {
             continue;
         }
 
         // check factions (default is OK)
         let caster_faction = match faction_member {
             Some(member) => member.0,
-            None => Faction::default(),
+            None => components::Faction::default(),
         };
         let target_faction = faction_checker
             .get_entity_faction(casting.target)
             .unwrap_or_default();
         if !is_selfcast
-            && alignment::is_valid_target(spell.hostility, caster_faction, target_faction)
+            && components::is_valid_target(spell.hostility, caster_faction, target_faction)
         {
             continue;
         }
@@ -114,21 +63,21 @@ fn sys_validate_cast_targets(
             casting.target,
             casting.spell_id
         );
-        commands.entity(entity).remove::<CastingSpell>();
+        commands.entity(entity).remove::<components::CastingSpell>();
     }
 }
 
 /// Dispatch `SpellApplicationEvent` for finished casts
-fn sys_finish_casts(
+pub(super) fn sys_finish_casts(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut CastingSpell)>,
+    mut query: Query<(Entity, &mut components::CastingSpell)>,
     mut spell_app_ev_w: EventWriter<events::SpellApplicationEvent>,
 ) {
     for (entity, casting) in query.iter_mut() {
         if !casting.cast_timer.finished() {
             continue;
         }
-        commands.entity(entity).remove::<CastingSpell>();
+        commands.entity(entity).remove::<components::CastingSpell>();
 
         // send spell application events
         spell_app_ev_w.send(events::SpellApplicationEvent {
@@ -140,42 +89,38 @@ fn sys_finish_casts(
 }
 
 // Tick spell casts
-fn sys_tick_casts(time: Res<Time>, mut query: Query<&mut CastingSpell>) {
+pub(super) fn sys_tick_casts(time: Res<Time>, mut query: Query<&mut components::CastingSpell>) {
     for mut casting in query.iter_mut() {
         casting.cast_timer.tick(time.delta());
     }
 }
 
-pub struct SpellsPlugin;
-
-impl Plugin for SpellsPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_systems(
-            FixedUpdate,
-            (
-                (
-                    sys_start_casting_ev,
-                    sys_tick_casts,
-                    sys_validate_cast_targets,
-                    sys_finish_casts,
-                )
-                    .chain(),
-                effect_creation::get_configs().in_set(ServerSets::EffectCreation),
-            )
-                .chain(),
-        );
-
-        app.insert_resource(resource::get_spell_list_resource());
+/// Read spell application events and create effects
+pub(super) fn sys_spell_application_ev(
+    spell_list: Res<assets::SpellList>,
+    mut effect_ev_w: EventWriter<events::EffectQueueEvent>,
+    mut spell_ev_r: EventReader<events::SpellApplicationEvent>,
+) {
+    for ev in spell_ev_r.read() {
+        if let Some(spell_data) = spell_list.get_spell_data(ev.spell_id) {
+            effect_ev_w.send(events::EffectQueueEvent {
+                target: ev.target,
+                health_effect: spell_data.target_health_effect,
+                aura_effect: spell_data.target_aura_effect,
+            });
+        } else {
+            log::warn!("no spell {}", ev.spell_id);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::game::alignment::FactionMember;
+    use crate::game::components::FactionMember;
 
     use super::{
-        resource::{SpellData, SpellList},
-        sys_validate_cast_targets, CastingSpell,
+        assets::{SpellData, SpellList},
+        components, sys_validate_cast_targets,
     };
     use bevy::{
         app::{self, Update},
@@ -201,7 +146,7 @@ mod tests {
                     .world
                     .spawn((
                         FactionMember($t),
-                        CastingSpell {
+                        components::CastingSpell {
                             cast_timer: Timer::from_seconds(1.0, bevy::time::TimerMode::Once),
                             spell_id: $s,
                             target: target,
@@ -212,7 +157,7 @@ mod tests {
                 // tick our validation system
                 app.update();
 
-                let still_casting = app.world.get::<CastingSpell>(caster);
+                let still_casting = app.world.get::<components::CastingSpell>(caster);
                 assert_eq!($e, still_casting.is_some());
             }
         };

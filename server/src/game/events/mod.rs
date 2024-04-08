@@ -1,36 +1,33 @@
 /// general game events
+use bevy::prelude::*;
 
-use bevy::{app::Plugin, ecs::{entity::Entity, event::Event}};
-
-use super::{auras, spells};
+use super::assets;
 /// Queue an effect onto the target
 #[derive(Event, Debug, Copy, Clone)]
 pub struct EffectQueueEvent {
     pub target: Entity,
     pub health_effect: Option<i64>,
-    pub aura_effect: Option<auras::AuraID>,
+    pub aura_effect: Option<assets::AuraID>,
 }
-
 
 /// `spell_id` should be applied to `target`
 #[derive(Clone, Copy, Debug, Event)]
 pub struct SpellApplicationEvent {
     pub origin: Entity,
     pub target: Entity,
-    pub spell_id: spells::SpellID,
+    pub spell_id: assets::SpellID,
 }
-
 
 /// Unit should start casting `spell_id` at `target`
 #[derive(Event)]
 pub struct StartCastingEvent {
     pub entity: Entity,
     pub target: Entity,
-    pub spell_id: spells::SpellID,
+    pub spell_id: assets::SpellID,
 }
 
 impl StartCastingEvent {
-    pub fn new(entity: Entity, target: Entity, spell_id: spells::SpellID) -> Self {
+    pub fn new(entity: Entity, target: Entity, spell_id: assets::SpellID) -> Self {
         Self {
             entity,
             target,
@@ -39,12 +36,28 @@ impl StartCastingEvent {
     }
 }
 
+/// Request to add an aura child to the given entity
+#[derive(Event, Debug)]
+pub struct AddAuraEvent {
+    pub aura_id: assets::AuraID,
+    pub target_entity: Entity,
+}
+
+/// Request to drop an aura child from the given entity
+#[derive(Event, Debug)]
+pub struct RemoveAuraEvent {
+    pub aura_id: assets::AuraID,
+    pub target_entity: Entity,
+}
+
 pub struct GameEventsPlugin;
 
 impl Plugin for GameEventsPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_event::<StartCastingEvent>();
-        app.add_event::<SpellApplicationEvent>();
-        app.add_event::<EffectQueueEvent>();
+        app.add_event::<StartCastingEvent>()
+            .add_event::<SpellApplicationEvent>()
+            .add_event::<EffectQueueEvent>()
+            .add_event::<AddAuraEvent>()
+            .add_event::<RemoveAuraEvent>();
     }
 }

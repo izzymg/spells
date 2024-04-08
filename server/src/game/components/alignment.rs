@@ -1,6 +1,5 @@
 /// For friendlyness/hostility determinations
-
-use bevy::ecs::{component::Component, entity::Entity, system::{Query, SystemParam}};
+use bevy::{ecs::system::SystemParam, prelude::*};
 
 pub type Faction = u8;
 
@@ -40,7 +39,7 @@ pub struct FactionChecker<'w, 's> {
 impl<'w, 's> FactionChecker<'w, 's> {
     pub fn get_entity_faction(&self, entity: Entity) -> Option<Faction> {
         if let Ok(f) = self.factions.get(entity) {
-            return Some(f.0)
+            return Some(f.0);
         }
         None
     }

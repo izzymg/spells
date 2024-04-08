@@ -1,37 +1,20 @@
-use bevy::{
-    ecs::{
-        entity::Entity, event::EventReader, schedule::IntoSystemConfigs, system::{Commands, Query, Res}
-    }, hierarchy::{Children, DespawnRecursiveExt}, prelude::BuildChildren, time::{Time, Timer, TimerMode}
-};
-use super::{resource, AddAuraEvent, Aura, AuraType, RemoveAuraEvent, ShieldAura, TickingEffectAura};
+use crate::game::{assets, components, events};
+use bevy::prelude::*;
 
-/// Tick auras & remove expired
-fn sys_tick_clean_auras(
-    mut commands: Commands,
-    mut query: Query<(Entity, &mut Aura)>,
-    time: Res<Time>,
-) {
-    for (entity, mut effect) in query.iter_mut() {
-        effect.duration.tick(time.delta());
-        if effect.duration.finished() {
-            commands.entity(entity).despawn_recursive();
-        }
-    }
-}
+use super::ServerSets;
 
-
-/// Process an add aura event 
+/// Process an add aura event
 fn sys_add_aura_ev(
-    mut ev_r: EventReader<AddAuraEvent>,
-    mut commands: Commands, 
-    auras_db: resource::AuraSysResource,
+    mut ev_r: EventReader<events::AddAuraEvent>,
+    mut commands: Commands,
+    auras_db: assets::AuraSysResource,
 ) {
     for ev in ev_r.read() {
         // look up status
         if let Some(aura_data) = auras_db.get_status_effect_data(ev.aura_id) {
             // spawn base aura
             let base_entity = commands
-                .spawn((Aura {
+                .spawn((components::Aura {
                     id: ev.aura_id,
                     duration: Timer::new(aura_data.duration, TimerMode::Once),
                 },))
@@ -39,12 +22,12 @@ fn sys_add_aura_ev(
 
             // add aura types
             match aura_data.status_type {
-                AuraType::TickingHP => {
-                    commands.entity(base_entity).insert(TickingEffectAura::new())
-                }
-                AuraType::Shield => commands
+                assets::AuraType::TickingHP => commands
                     .entity(base_entity)
-                    .insert(ShieldAura::new(aura_data.base_multiplier)),
+                    .insert(components::TickingEffectAura::new()),
+                assets::AuraType::Shield => commands
+                    .entity(base_entity)
+                    .insert(components::ShieldAura::new(aura_data.base_multiplier)),
             };
 
             // parent
@@ -55,10 +38,10 @@ fn sys_add_aura_ev(
 
 /// Process a remove aura event
 fn sys_remove_aura_ev(
-    mut ev_r: EventReader<RemoveAuraEvent>,
+    mut ev_r: EventReader<events::RemoveAuraEvent>,
     mut commands: Commands,
     child_query: Query<&Children>,
-    status_effect_query: Query<&Aura>,
+    status_effect_query: Query<&components::Aura>,
 ) {
     'event_processing: for ev in ev_r.read() {
         // find children of entity
@@ -77,6 +60,13 @@ fn sys_remove_aura_ev(
     }
 }
 
-pub fn get_configs() -> impl IntoSystemConfigs<()> {
-    (sys_tick_clean_auras, sys_remove_aura_ev, sys_add_aura_ev).into_configs()
+pub struct EffectApplicationPlugin;
+
+impl Plugin for EffectApplicationPlugin {
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.add_systems(
+            FixedUpdate,
+            (sys_add_aura_ev, sys_remove_aura_ev).in_set(ServerSets::EffectApplication),
+        );
+    }
 }

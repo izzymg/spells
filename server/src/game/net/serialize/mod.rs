@@ -1,7 +1,7 @@
 use bincode;
 use serde::Serialize;
 
-use super::spells;
+use crate::game::components;
 
 #[derive(Serialize, Debug, Copy, Clone)]
 pub struct CasterState {
@@ -10,8 +10,8 @@ pub struct CasterState {
     pub spell_id: usize,
 }
 
-impl From<&spells::CastingSpell> for CasterState {
-    fn from(value: &spells::CastingSpell) -> Self {
+impl From<&components::CastingSpell> for CasterState {
+    fn from(value: &components::CastingSpell) -> Self {
         Self {
             timer: value.cast_timer.elapsed().as_millis(),
             max_timer: value.cast_timer.duration().as_millis(),
@@ -29,7 +29,7 @@ impl WorldState {
     pub fn serialize(&self) -> Result<Vec<u8>, bincode::ErrorKind> {
         match bincode::serialize(&self) {
             Ok(data) => Ok(data),
-            Err(err) => Err(*err)
+            Err(err) => Err(*err),
         }
     }
 }

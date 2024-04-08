@@ -158,17 +158,25 @@ mod tests {
     use super::WorldConnection;
 
     struct ListenTest {
-        data: Vec<u8>
+        data: Vec<u8>,
     }
 
     #[test]
     fn test_listen_loop() {
         let tests = vec![
-            ListenTest { data: "bingus".as_bytes().to_vec() },
-            ListenTest { data: "b".as_bytes().to_vec() },
-            ListenTest { data: "0".as_bytes().to_vec() },
+            ListenTest {
+                data: "bingus".as_bytes().to_vec(),
+            },
+            ListenTest {
+                data: "b".as_bytes().to_vec(),
+            },
+            ListenTest {
+                data: "0".as_bytes().to_vec(),
+            },
             ListenTest { data: vec![05] },
-            ListenTest { data: vec![05, 50, 30] },
+            ListenTest {
+                data: vec![05, 50, 30],
+            },
         ];
 
         for test in tests {
@@ -191,7 +199,9 @@ mod tests {
             });
             let val = rx.recv().unwrap().unwrap();
             assert_eq!(val, message);
-            world_to_client_conn.shutdown(std::net::Shutdown::Both).unwrap();
+            world_to_client_conn
+                .shutdown(std::net::Shutdown::Both)
+                .unwrap();
 
             let val = handle.join().unwrap();
             assert_eq!(val.unwrap_err(), WorldConnectionError::ConnectionEnded);

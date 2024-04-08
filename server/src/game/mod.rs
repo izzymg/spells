@@ -1,26 +1,19 @@
 use std::error::Error;
 
 /// snapshots of world
-use bevy::{
-    app::{self, FixedUpdate, Startup},
-    ecs::schedule::{IntoSystemSetConfigs, SystemSet},
-    log::LogPlugin,
-    time::{Fixed, Time},
-    MinimalPlugins,
-};
+use bevy::{app, log::LogPlugin, prelude::*};
 
 use self::scenes::sys_many_effects;
 
-pub mod alignment;
-pub mod auras;
-pub mod effects;
-pub mod health;
-pub mod serialize;
-pub mod socket;
-pub mod spells;
-pub mod world;
-pub mod scenes;
+pub mod assets;
+pub mod components;
+pub mod effect_application;
+pub mod effect_creation;
+pub mod effect_processing;
+pub mod entity_processing;
 pub mod events;
+pub mod net;
+pub mod scenes;
 
 /// Defines ordering of system processing across the game server.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -41,11 +34,12 @@ pub fn run_game_server() -> Result<(), Box<dyn Error>> {
                 update_subscriber: None,
             },
             events::GameEventsPlugin,
-            spells::SpellsPlugin,
-            health::HealthPlugin,
-            auras::AuraPlugin,
-            effects::EffectPlugin,
-            world::WorldPlugin,
+            net::NetPlugin,
+            effect_processing::EffectPlugin,
+            effect_creation::EffectCreationPlugin,
+            effect_application::EffectApplicationPlugin,
+            entity_processing::EntityProcessingPlugin,
+            assets::AssetsPlugin,
         ))
         .configure_sets(
             FixedUpdate,
