@@ -1,28 +1,33 @@
+use bevy::ecs::entity::Entity;
 use bincode;
 use serde::Serialize;
 
-use crate::game::components;
-
 #[derive(Serialize, Debug, Copy, Clone)]
-pub struct CasterState {
+pub struct EntityCaster {
+    pub entity: Entity,
     pub timer: u128,
     pub max_timer: u128,
     pub spell_id: usize,
 }
 
-impl From<&components::CastingSpell> for CasterState {
-    fn from(value: &components::CastingSpell) -> Self {
-        Self {
-            timer: value.cast_timer.elapsed().as_millis(),
-            max_timer: value.cast_timer.duration().as_millis(),
-            spell_id: value.spell_id.get(),
-        }
-    }
+#[derive(Serialize, Debug, Copy, Clone)]
+pub struct EntityHealth {
+    pub entity: Entity,
+    pub health: i64,
 }
 
-#[derive(Default, Debug, Serialize)]
+#[derive(Serialize, Debug, Copy, Clone)]
+pub struct EntityAura {
+    pub entity: Entity,
+    pub aura_id: usize,
+    pub remaining: u128,
+}
+
+#[derive(Debug, Serialize, Default)]
 pub struct WorldState {
-    pub casters: Vec<CasterState>,
+    pub health: Vec<EntityHealth>,
+    pub casters: Vec<EntityCaster>,
+    pub auras: Vec<EntityAura>,
 }
 
 impl WorldState {

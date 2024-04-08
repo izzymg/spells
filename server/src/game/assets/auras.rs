@@ -7,7 +7,7 @@ use std::time::Duration;
 pub struct AuraID(usize);
 
 impl AuraID {
-    fn get(self) -> usize {
+    pub fn get(self) -> usize {
         self.0
     }
 }
