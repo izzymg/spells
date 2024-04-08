@@ -75,6 +75,8 @@ pub(super) fn get_spell_list_resource() -> SpellsAsset {
         SpellData::new("Fire Ball".into(), 500)
             .with_target_hp(-50)
             .with_target_aura(0.into()),
+        SpellData::new("Grand Heal".into(), 500)
+            .with_target_hp(40),
         SpellData::new("Arcane Barrier".into(), 0)
             .with_target_aura(1.into())
             .mark_friendly(),
