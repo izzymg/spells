@@ -52,11 +52,15 @@ pub fn sys_many_effects(world: &mut World) {
 pub fn sys_spells(world: &mut World) {
     let skeleton = world.spawn(Health(150)).id();
     world
-        .entity_mut(skeleton)
-        .insert(CastingSpell::new(1.into(), skeleton, Duration::from_secs(1)));
-    world.spawn(components::CastingSpell::new(
-        0.into(),
-        skeleton,
-        Duration::from_secs(1),
-    ));
+    .entity_mut(skeleton)
+    .insert(CastingSpell::new(1.into(), skeleton, Duration::from_secs(1)));
+    let casters = 10;
+
+    for _ in 0..casters {
+        world.spawn(components::CastingSpell::new(
+            0.into(),
+            skeleton,
+            Duration::from_secs(1),
+        ));
+    }
 }

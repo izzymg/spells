@@ -11,9 +11,10 @@ impl Plugin for EffectCreationPlugin {
         app.add_systems(
             FixedUpdate,
             (
-                spells::sys_tick_casts,
                 spells::sys_validate_cast_targets,
-                spells::sys_finish_casts,
+                spells::sys_tick_casts,
+                spells::sys_dispatch_finished_casts,
+                spells::sys_remove_finished_casts,
                 spells::sys_spell_application_ev,
             )
                 .chain()

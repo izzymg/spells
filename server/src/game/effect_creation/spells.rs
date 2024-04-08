@@ -46,23 +46,32 @@ pub(super) fn sys_validate_cast_targets(
 }
 
 /// Dispatch `SpellApplicationEvent` for finished casts
-pub(super) fn sys_finish_casts(
-    mut commands: Commands,
-    mut query: Query<(Entity, &mut components::CastingSpell)>,
+pub(super) fn sys_dispatch_finished_casts(
+    query: Query<(Entity, &components::CastingSpell)>,
     mut spell_app_ev_w: EventWriter<events::SpellApplicationEvent>,
 ) {
-    for (entity, casting) in query.iter_mut() {
-        if !casting.cast_timer.finished() {
-            continue;
-        }
-        commands.entity(entity).remove::<components::CastingSpell>();
+    let events: Vec<events::SpellApplicationEvent> = query
+        .iter()
+        .filter_map(|(caster, cast)| {
+            cast.cast_timer
+                .finished()
+                .then_some(events::SpellApplicationEvent {
+                    origin: caster,
+                    spell_id: cast.spell_id,
+                    target: cast.target,
+                })
+        })
+        .collect();
 
-        // send spell application events
-        spell_app_ev_w.send(events::SpellApplicationEvent {
-            origin: entity,
-            spell_id: casting.spell_id,
-            target: casting.target,
-        });
+    spell_app_ev_w.send_batch(events);
+}
+
+pub(super) fn sys_remove_finished_casts(
+    mut commands: Commands,
+    query: Query<(Entity, &components::CastingSpell)>,
+) {
+    for (entity, _) in query.iter().filter(|(_, cast)| cast.cast_timer.finished()) {
+        commands.entity(entity).remove::<components::CastingSpell>();
     }
 }
 
