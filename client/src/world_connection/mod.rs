@@ -7,8 +7,6 @@ use std::{
     time::Duration,
 };
 
-const EXPECT_SERVER_HEADER: &str = "SPELLSERVER 0.1\n";
-const CLIENT_RESPONSE: &str = "SPELLCLIENT OK 0.1\n";
 const PREFIX_BYTES: usize = 4;
 const MAX_MESSAGE_SIZE: u32 = 300;
 
@@ -100,11 +98,11 @@ impl WorldConnection {
 
     /// Block until we receive the expected server header response from Spells Server.
     fn expect_header(&mut self) -> Result<bool> {
-        self.expect_line(EXPECT_SERVER_HEADER)
+        self.expect_line(lib_spells::SERVER_HEADER)
     }
 
     fn write_client_ok(&mut self) -> Result<()> {
-        self.writer.write_all(CLIENT_RESPONSE.as_bytes())?;
+        self.writer.write_all(lib_spells::CLIENT_EXPECT.as_bytes())?;
         self.writer.flush()?;
         Ok(())
     }

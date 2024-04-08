@@ -9,8 +9,6 @@ use std::{io, time};
 
 use super::client_stream::ClientStream;
 
-use super::CLIENT_EXPECT;
-
 const SERVER_ADDR: &str = "0.0.0.0:7776";
 const SERVER_TOKEN: Token = Token(0); // uniquely identify TCP listener events
 const EVENT_BUFFER_SIZE: usize = 1028;
@@ -65,9 +63,9 @@ impl PendingClient {
 
     /// read the client stream and return if the response
     pub fn validate(&mut self) -> Result<(), ClientValidationError> {
-        let mut buf: [u8; CLIENT_EXPECT.as_bytes().len()] = [0; CLIENT_EXPECT.as_bytes().len()];
+        let mut buf = [0 as u8; lib_spells::SERVER_HEADER.as_bytes().len()];
         self.client.read_fill(&mut buf)?;
-        if CLIENT_EXPECT.as_bytes() != buf {
+        if lib_spells::SERVER_HEADER.as_bytes() != buf {
             return Err(ClientValidationError::ErrInvalidHeader);
         }
         Ok(())
@@ -250,7 +248,7 @@ mod tests {
         io::{Read, Write}, net::TcpStream, sync::mpsc, thread, time::Duration
     };
 
-    use super::{super::{CLIENT_EXPECT, SERVER_HEADER}, ClientServer};
+    use super::ClientServer;
 
     #[test]
     fn test_getter() {
@@ -265,22 +263,18 @@ mod tests {
             client_getter.event_loop(rx);
         });
 
-        {
+        let connect = || {
             let mut stream = TcpStream::connect("127.0.0.1:7776").unwrap();
             println!("stream connected");
-            let mut first_response: [u8; SERVER_HEADER.len()] = [0; SERVER_HEADER.len()];
+            let mut first_response = [0; lib_spells::SERVER_HEADER.len()];
             stream.read_exact(&mut first_response).unwrap();
-            assert_eq!(SERVER_HEADER.as_bytes(), first_response);
-            stream.write(CLIENT_EXPECT.as_bytes()).unwrap();
-        }
+            assert_eq!(lib_spells::SERVER_HEADER.as_bytes(), first_response);
+            stream.write(lib_spells::SERVER_HEADER.as_bytes()).unwrap();
+        };
+
+        connect();
         thread::sleep(Duration::from_secs(4));
-        {
-            let mut stream = TcpStream::connect("127.0.0.1:7776").unwrap();
-            println!("stream connected {}", stream.local_addr().unwrap());
-            let mut first_response: [u8; SERVER_HEADER.len()] = [0; SERVER_HEADER.len()];
-            stream.read_exact(&mut first_response).unwrap();
-            assert_eq!(SERVER_HEADER.as_bytes(), first_response);
-            stream.write(CLIENT_EXPECT.as_bytes()).unwrap();
-        }
+        connect();
+
     }
 }

@@ -2,8 +2,6 @@ use std::io::{self, Read, Write};
 
 use mio::{Interest, Token};
 
-use super::SERVER_HEADER;
-
 #[derive(Debug)]
 pub(super) struct ClientStream {
     stream: mio::net::TcpStream,
@@ -40,7 +38,7 @@ impl ClientStream {
     }
 
     pub(super) fn write_header(&mut self) -> io::Result<()> {
-        self.write_all(SERVER_HEADER.as_bytes())
+        self.write_all(lib_spells::SERVER_HEADER.as_bytes())
     }
 
     pub(super) fn read_fill(&mut self, buf: &mut [u8]) -> io::Result<usize> {
