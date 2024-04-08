@@ -23,11 +23,11 @@ pub fn sys_many_effects(world: &mut World) {
 
     let mut defender_entities = vec![];
     for _ in 0..n_defenders {
-        let defender = world.spawn(components::Health { hp: defender_hp }).id();
+        let defender = world.spawn(components::Health(defender_hp)).id();
         defender_entities.push(defender);
         for _ in 0..n_shields {
             let shield = world
-                .spawn(components::ShieldAura { value: shield_val })
+                .spawn(components::ShieldAura(shield_val))
                 .id();
             world.entity_mut(defender).add_child(shield);
         }

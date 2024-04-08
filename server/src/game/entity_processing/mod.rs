@@ -20,7 +20,7 @@ fn sys_tick_clean_auras(
 /// Kills entities with no health, recursively (!!)
 fn sys_despawn_dead(mut commands: Commands, query: Query<(Entity, &components::Health)>) {
     for (entity, health) in query.iter() {
-        if health.hp <= 0 {
+        if health.0 <= 0 {
             commands.entity(entity).despawn_recursive();
         }
     }

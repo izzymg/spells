@@ -10,9 +10,7 @@ const TICK_RATE: Duration = Duration::from_millis(1000);
 
 /// Entity that can die
 #[derive(Debug, Component, Default)]
-pub struct Health {
-    pub hp: i64,
-}
+pub struct Health(pub i64);
 
 /// Represents one aura belonging to the parent of this entity.
 #[derive(Component)]
@@ -29,29 +27,21 @@ impl Aura {
 
 /// The parent entity is shielded
 #[derive(Component)]
-pub struct ShieldAura {
-    pub value: i64,
-}
+pub struct ShieldAura(pub i64);
 
 impl ShieldAura {
-    pub fn new(base_multiplier: i64) -> ShieldAura {
-        ShieldAura {
-            value: base_multiplier,
-        }
+    pub fn new(base_multiplier: i64) -> Self {
+        Self(base_multiplier)
     }
 }
 
 /// Ticking aura that causes queues an effect on the parent each tick.
 #[derive(Component)]
-pub struct TickingEffectAura {
-    ticker: Timer,
-}
+pub struct TickingEffectAura(pub Timer);
 
 impl TickingEffectAura {
-    pub fn new() -> TickingEffectAura {
-        TickingEffectAura {
-            ticker: Timer::new(TICK_RATE, TimerMode::Repeating),
-        }
+    pub fn new() -> Self {
+        TickingEffectAura(Timer::new(TICK_RATE, TimerMode::Repeating))
     }
 }
 

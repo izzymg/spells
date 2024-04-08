@@ -1,4 +1,4 @@
-use std::{default, time::Instant};
+use std::time::Instant;
 
 use bevy::{ecs::system::SystemParam, log, prelude::*};
 
@@ -19,8 +19,8 @@ impl<'w, 's> ShieldQuery<'w, 's> {
             .get(entity)
             .iter()
             .flat_map(|&e| self.query_shields.iter_many(e))
-            .map(|f| f.value)
-            .reduce(|f, v| f + v)
+            .map(|s| s.0)
+            .reduce(|a, b| a + b)
     }
 
     /// Apply damage to shields on the entity. Damage should be positive (e.g. +400 to do 400 damage).
@@ -30,8 +30,8 @@ impl<'w, 's> ShieldQuery<'w, 's> {
             // apply n damage to shields
             let mut iter = self.query_shields.iter_many_mut(children);
             while let Some(mut shield) = iter.fetch_next() {
-                let applied_dmg = shield.value.min(damage_left);
-                shield.value -= applied_dmg;
+                let applied_dmg = shield.0.min(damage_left);
+                shield.0 -= applied_dmg;
                 damage_left -= applied_dmg;
             }
         }
@@ -47,7 +47,7 @@ impl<'w, 's> HealthQuery<'w, 's> {
     /// Update entity hp by effect. Negative to deal damage.
     fn apply_entity_hp(&mut self, entity: Entity, effect: i64) {
         if let Ok(mut hp) = self.query_health.get_mut(entity) {
-            hp.hp += effect;
+            hp.0 += effect;
         }
     }
 }
@@ -156,11 +156,11 @@ mod tests {
         app.init_resource::<Events<events::EffectQueueEvent>>();
         app.add_systems(Update, sys_process_damage_effects);
 
-        let skele = app.world.spawn(components::Health { hp }).id();
+        let skele = app.world.spawn(components::Health(hp)).id();
         for shield in shields {
             let child = app
                 .world
-                .spawn(components::ShieldAura { value: shield })
+                .spawn(components::ShieldAura(shield))
                 .id();
             app.world.entity_mut(skele).add_child(child);
         }
@@ -177,7 +177,7 @@ mod tests {
         }
         app.update();
 
-        let remaining_hp = app.world.get::<components::Health>(skele).unwrap().hp;
+        let remaining_hp = app.world.get::<components::Health>(skele).unwrap().0;
         assert_eq!(remaining_hp, expect_hp);
     }
 }
