@@ -3,7 +3,7 @@ use bevy::{
         entity::Entity, event::EventReader, schedule::IntoSystemConfigs, system::{Commands, Query, Res}
     }, hierarchy::{Children, DespawnRecursiveExt}, prelude::BuildChildren, time::{Time, Timer, TimerMode}
 };
-use super::{resource, AddAuraEvent, Aura, AuraType, RemoveAuraEvent, ShieldAura, ShieldDamageEvent, TickingEffectAura};
+use super::{resource, AddAuraEvent, Aura, AuraType, RemoveAuraEvent, ShieldAura, TickingEffectAura};
 
 /// Tick auras & remove expired
 fn sys_tick_clean_auras(
@@ -77,26 +77,6 @@ fn sys_remove_aura_ev(
     }
 }
 
-/// Process a shield damage event
-fn sys_damage_shield_ev(
-    mut ev_r: EventReader<ShieldDamageEvent>,
-    mut shield_query: Query<&mut ShieldAura>,
-    child_query: Query<&Children>,
-) {
-    for ev in ev_r.read() {
-        let mut damage = ev.damage;
-        if let Ok(children) = child_query.get(ev.entity) {
-            let mut iter = shield_query.iter_many_mut(children);
-            // apply n damage to shields
-            while let Some(mut shield) = iter.fetch_next() {
-                let applied_dmg = shield.value.min(damage);
-                shield.value -= applied_dmg;
-                damage -= applied_dmg;
-            }
-        }
-    }
-}
-
 pub fn get_configs() -> impl IntoSystemConfigs<()> {
-    (sys_damage_shield_ev, sys_tick_clean_auras, sys_remove_aura_ev, sys_add_aura_ev).into_configs()
+    (sys_tick_clean_auras, sys_remove_aura_ev, sys_add_aura_ev).into_configs()
 }

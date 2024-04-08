@@ -1,5 +1,4 @@
 mod entity_processing;
-mod effect_applications;
 
 use bevy::{
     app::{FixedUpdate, Plugin},
@@ -18,7 +17,6 @@ impl Plugin for HealthPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_event::<HealthTickEvent>();
         app.add_systems(FixedUpdate, entity_processing::get_config().in_set(ServerSets::EntityProcessing));
-        app.add_systems(FixedUpdate, effect_applications::get_config().in_set(ServerSets::EffectApplication));
     }
 }
 

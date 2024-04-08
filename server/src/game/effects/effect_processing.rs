@@ -3,147 +3,161 @@ use bevy::{
         entity::Entity,
         event::{EventWriter, Events},
         schedule::IntoSystemConfigs,
-        system::{In, IntoSystem, Query, ResMut},
+        system::{Query, Res, ResMut, SystemParam},
     },
-    hierarchy::Children,
-    utils::hashbrown::HashMap,
+    hierarchy::Children, log, utils::info,
 };
 
-use crate::game::{health};
+use crate::game::{auras, health};
 
-use super::{
-    auras::{self, AuraID},
-    EffectQueueEvent,
-};
+use super::EffectQueueEvent;
 
-/// Pass of event process & simulation.
-#[derive(Debug, Copy, Clone)]
-struct EffectPass {
-    target: Entity,
-    health_effect: Option<i64>,
-    aura_effect: Option<AuraID>,
+#[derive(SystemParam)]
+struct ShieldQuery<'w, 's> {
+    query_children: Query<'w, 's, &'static Children>,
+    query_shields: Query<'w, 's, &'static mut auras::ShieldAura>,
 }
 
-impl From<EffectQueueEvent> for EffectPass {
-    fn from(value: EffectQueueEvent) -> Self {
-        Self {
-            health_effect: value.health_effect,
-            target: value.target,
-            aura_effect: value.aura_effect,
-        }
+impl<'w, 's> ShieldQuery<'w, 's> {
+    /// Returns the current absorb value of a given entity based off its auras.
+    fn get_total_entity_shielding(&self, entity: Entity) -> Option<i64> {
+        self.query_children
+            .get(entity)
+            .iter()
+            .flat_map(|&e| self.query_shields.iter_many(e))
+            .map(|f| f.value)
+            .reduce(|f, v| f + v)
     }
-}
-/// Tracking simulated absorb shield effects
-#[derive(Clone, Copy)]
-struct AbsorbDamage {
-    total: Option<i64>,
-    remaining: i64,
-}
 
-/// Returns the current absorb value of a given entity based off its auras.
-fn get_total_entity_shielding(
-    q_children: &Query<&Children>,
-    q_shields: &Query<&auras::ShieldAura>,
-    entity: Entity,
-) -> Option<i64> {
-    q_children
-        .get(entity)
-        .iter()
-        .flat_map(|&e| q_shields.iter_many(e))
-        .map(|f| f.value)
-        .reduce(|f, v| f + v)
-}
-
-/// Maps all effect queue events into our pass pipe.
-fn sys_process_events(mut effect_queue: ResMut<Events<EffectQueueEvent>>) -> Vec<EffectPass> {
-    effect_queue.drain().map(|v| v.into()).collect()
-}
-
-/// Simulate damage to enemy shields then dispatch low level events, returning "leftover" damage to our next pass.
-fn sys_dispatch_shields(
-    In(mut pass): In<Vec<EffectPass>>,
-    q_children: Query<&Children>,
-    q_shields: Query<&auras::ShieldAura>,
-    mut shield_dmg_event_w: EventWriter<auras::ShieldDamageEvent>,
-) -> Vec<EffectPass> {
-    let mut absorb_cache: HashMap<Entity, AbsorbDamage> = HashMap::new();
-
-    for effect in pass.iter_mut() {
-        // only act if we're damaging our target
-        if effect.health_effect.is_some_and(|v| v.is_negative()) {
-            // get target absorb from cache or calculate from entity
-            let target_absorb = match absorb_cache.get(&effect.target) {
-                Some(&absorb) => absorb,
-                None => {
-                    let target_ab =
-                        get_total_entity_shielding(&q_children, &q_shields, effect.target);
-                    let ab = AbsorbDamage {
-                        total: target_ab,
-                        remaining: target_ab.unwrap_or_default(),
-                    };
-
-                    absorb_cache.insert(effect.target, ab);
-                    ab
-                }
-            };
-
-            // ensure we only do work if our target entity has a shield > 0
-            if target_absorb.total.is_some_and(|v| v > 0) {
-                // update remaining in cache
-                let remaining = target_absorb.remaining + effect.health_effect.unwrap();
-                absorb_cache.insert(
-                    effect.target,
-                    AbsorbDamage {
-                        remaining: remaining.max(0),
-                        ..target_absorb
-                    },
-                );
-
-                // apply "spillover" damage
-                if remaining < 0 {
-                    effect.health_effect = Some(remaining);
-                } else {
-                    effect.health_effect = None;
-                }
+    /// Apply damage to shields on the entity. Damage should be positive (e.g. +400 to do 400 damage).
+    fn apply_shield_damage(&mut self, entity: Entity, damage: i64) {
+        let mut damage_left = damage;
+        if let Ok(children) = self.query_children.get(entity) {
+            // apply n damage to shields
+            let mut iter = self.query_shields.iter_many_mut(children);
+            while let Some(mut shield) = iter.fetch_next() {
+                let applied_dmg = shield.value.min(damage_left);
+                shield.value -= applied_dmg;
+                damage_left -= applied_dmg;
             }
         }
     }
-
-    // send all our damage events
-    for (entity, absorb_cache) in absorb_cache {
-        shield_dmg_event_w.send(auras::ShieldDamageEvent {
-            damage: absorb_cache.total.unwrap_or(0) - absorb_cache.remaining,
-            entity: entity,
-        });
-    }
-    pass
 }
 
-/// Dispatch low level damage events.
-fn sys_dispatch_damage(
-    In(second_pass): In<Vec<EffectPass>>,
-    mut health_event_w: EventWriter<health::HealthTickEvent>,
-    mut aura_add_event_w: EventWriter<auras::AddAuraEvent>,
-) {
-    for pass in second_pass {
-        if let Some(hp) = pass.health_effect {
-            health_event_w.send(health::HealthTickEvent {
-                entity: pass.target,
-                hp,
-            });
-        }
+#[derive(SystemParam)]
+struct HealthQuery<'w, 's> {
+    query_health: Query<'w, 's, &'static mut health::Health>,
+}
 
-        if let Some(aura_id) = pass.aura_effect {
-            aura_add_event_w.send(auras::AddAuraEvent {
-                aura_id,
-                target_entity: pass.target,
+impl<'w, 's> HealthQuery<'w, 's> {
+    /// Update entity hp by effect. Negative to deal damage.
+    fn apply_entity_hp(&mut self, entity: Entity, effect: i64) {
+        if let Ok(mut hp) = self.query_health.get_mut(entity) {
+            hp.hp += effect;
+        }
+    }
+}
+
+/// Apply damage events with respect to active target auras.
+fn sys_process_damage_effects(
+    effect_events: Res<Events<EffectQueueEvent>>,
+    mut shield_query: ShieldQuery,
+    mut health_query: HealthQuery,
+) {
+    for effect in effect_events.get_reader().read(&effect_events) {
+        if effect.health_effect.is_none() {
+            continue;
+        }
+        let mut health_effect = effect.health_effect.unwrap();
+
+        let is_damaging = effect.health_effect.is_some_and(|f| f.is_negative());
+        let target_shielding = shield_query.get_total_entity_shielding(effect.target);
+        if is_damaging && target_shielding.is_some() {
+            let shield_damage = health_effect.abs().min(target_shielding.unwrap()); // damage to shields <= total shielding
+            log::debug!("{:?} absorbs {} damage", effect.target, shield_damage);
+            health_effect = (target_shielding.unwrap() + health_effect).min(0);
+            shield_query.apply_shield_damage(effect.target, shield_damage);
+        }
+        health_query.apply_entity_hp(effect.target, health_effect);
+        log::debug!("{:?} {:+} hp", effect.target, health_effect);
+    }
+}
+
+/// Process aura events
+fn sys_process_aura_effects(
+    effect_events: Res<Events<EffectQueueEvent>>,
+    mut ev_w: EventWriter<auras::AddAuraEvent>,
+) {
+    for effect in effect_events.get_reader().read(&effect_events) {
+        if let Some(aura) = effect.aura_effect {
+            ev_w.send(auras::AddAuraEvent {
+                aura_id: aura,
+                target_entity: effect.target,
             });
         }
     }
+}
+
+fn sys_drain_effect_evs(mut effect_events: ResMut<Events<EffectQueueEvent>>) {
+    effect_events.clear();
+    log::debug!("clearing effect processing tick");
 }
 
 pub fn get_configs() -> impl IntoSystemConfigs<()> {
-    sys_process_events
-        .pipe(sys_dispatch_shields.pipe(sys_dispatch_damage))
+    (
+        sys_process_damage_effects,
+        sys_process_aura_effects,
+        sys_drain_effect_evs,
+    )
+        .chain()
         .into_configs()
+}
+
+#[cfg(test)]
+mod tests {
+
+    use bevy::{
+        app::{self, Update},
+        ecs::event::Events,
+        hierarchy::BuildWorldChildren,
+    };
+
+    use crate::game::{auras, effects::EffectQueueEvent, health};
+
+    use super::sys_process_damage_effects;
+
+    #[test]
+    fn test_shielded_damage() {
+        let hp = 30;
+        let shields = vec![10, 5, 3];
+        let total_shielding = shields.clone().into_iter().reduce(|a, b| a + b).unwrap();
+        let hits = vec![-18, -2, -4];
+        let total_damage = hits.clone().into_iter().reduce(|a, b| a + b).unwrap();
+        let expect_hp = hp + (total_shielding + total_damage);
+
+        let mut app = app::App::new();
+        app.init_resource::<Events<EffectQueueEvent>>();
+        app.add_systems(Update, sys_process_damage_effects);
+
+        let skele = app.world.spawn(health::Health { hp }).id();
+        for shield in shields {
+            let child = app.world.spawn(auras::ShieldAura { value: shield }).id();
+            app.world.entity_mut(skele).add_child(child);
+        }
+
+        for hit in hits {
+            app.world
+                .get_resource_mut::<Events<EffectQueueEvent>>()
+                .unwrap()
+                .send(EffectQueueEvent {
+                    aura_effect: None,
+                    health_effect: Some(hit),
+                    target: skele,
+                });
+        }
+        app.update();
+
+        let remaining_hp = app.world.get::<health::Health>(skele).unwrap().hp;
+        assert_eq!(remaining_hp, expect_hp);
+    }
 }

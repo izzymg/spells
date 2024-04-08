@@ -9,6 +9,8 @@ use bevy::{
     MinimalPlugins,
 };
 
+use self::scenes::sys_many_effects;
+
 pub mod alignment;
 pub mod auras;
 pub mod effects;
@@ -17,6 +19,7 @@ pub mod serialize;
 pub mod socket;
 pub mod spells;
 pub mod world;
+pub mod scenes;
 
 /// Defines ordering of system processing across the game server.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -27,8 +30,6 @@ pub enum ServerSets {
     EffectApplication, // application of processed events
 }
 
-fn startup() {}
-
 pub fn run_game_server() -> Result<(), Box<dyn Error>> {
     app::App::new()
         .add_plugins((
@@ -38,18 +39,21 @@ pub fn run_game_server() -> Result<(), Box<dyn Error>> {
                 level: bevy::log::Level::DEBUG,
                 update_subscriber: None,
             },
-            spells::SpellsPlugin,
+            // spells::SpellsPlugin,
             health::HealthPlugin,
             auras::AuraPlugin,
             effects::EffectPlugin,
-            world::WorldPlugin,
+            // world::WorldPlugin,
         ))
         .configure_sets(
             FixedUpdate,
-            ServerSets::EntityProcessing.before(ServerSets::EffectProcessing),
+            ServerSets::EntityProcessing
+                .before(ServerSets::EffectCreation)
+                .before(ServerSets::EffectProcessing)
+                .before(ServerSets::EffectApplication),
         )
         .insert_resource(Time::<Fixed>::from_hz(0.5))
-        .add_systems(Startup, startup)
+        .add_systems(Startup, sys_many_effects)
         .run();
     Ok(())
 }
