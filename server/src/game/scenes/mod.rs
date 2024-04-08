@@ -1,12 +1,19 @@
 use crate::game::{components, events};
 use bevy::{log, prelude::*};
 
+pub fn get_scene(name: &str) -> Option<fn(&mut World)> {
+    match name {
+        "effects" => Some(sys_many_effects),
+        _ => None,
+    }
+}
+
 pub fn sys_many_effects(world: &mut World) {
-    let n_defenders = 1;
+    let n_defenders = 50;
+    let n_shields = 50;
+    let n_effects_per_defender = 50;
     let defender_hp = 55;
-    let n_shields = 1;
     let shield_val = 20;
-    let n_effects_per_defender = 4;
     let effect_dmg = -3;
 
     log::info!(

@@ -1,9 +1,7 @@
-use std::error::Error;
+use std::{env, error::Error};
 
 /// snapshots of world
 use bevy::{app, log::LogPlugin, prelude::*};
-
-use self::scenes::sys_many_effects;
 
 pub mod assets;
 pub mod components;
@@ -25,12 +23,23 @@ pub enum ServerSets {
 }
 
 pub fn run_game_server() -> Result<(), Box<dyn Error>> {
-    app::App::new()
-        .add_plugins((
+
+    let mut app = app::App::new();
+    let args: Vec<String> = env::args().collect();
+    if let Some(scene) = args.get(1) {
+        if let Some(scene_sys) = scenes::get_scene(scene) {
+            println!("starting scene {}", scene);
+            app.add_systems(Startup, scene_sys);
+        } else {
+            println!("no scene {}", scene);
+        }
+    }
+
+    app.add_plugins((
             MinimalPlugins,
             LogPlugin {
                 filter: "".into(),
-                level: bevy::log::Level::DEBUG,
+                level: bevy::log::Level::INFO,
                 update_subscriber: None,
             },
             events::GameEventsPlugin,
@@ -49,7 +58,6 @@ pub fn run_game_server() -> Result<(), Box<dyn Error>> {
                 .before(ServerSets::EffectApplication),
         )
         .insert_resource(Time::<Fixed>::from_hz(0.5))
-        .add_systems(Startup, sys_many_effects)
         .run();
     Ok(())
 }

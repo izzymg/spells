@@ -54,9 +54,10 @@ pub struct GameEventsPlugin;
 
 impl Plugin for GameEventsPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_event::<StartCastingEvent>()
+        app
+            .init_resource::<Events<EffectQueueEvent>>() // we want to manually clear this one
+            .add_event::<StartCastingEvent>()
             .add_event::<SpellApplicationEvent>()
-            .add_event::<EffectQueueEvent>()
             .add_event::<AddAuraEvent>()
             .add_event::<RemoveAuraEvent>();
     }
