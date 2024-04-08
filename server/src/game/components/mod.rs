@@ -35,7 +35,7 @@ impl ShieldAura {
     }
 }
 
-/// Ticking aura that causes queues an effect on the parent each tick.
+/// The parent entity is ticking health
 #[derive(Component)]
 pub struct TickingEffectAura(pub Timer);
 

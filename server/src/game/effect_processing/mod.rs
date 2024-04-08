@@ -53,7 +53,6 @@ impl<'w, 's> HealthQuery<'w, 's> {
 }
 
 fn sys_bench_start(mut timing: ResMut<TimingResource>) {
-    log::info!("bench processing start");
     timing.processing_time = Instant::now();
 }
 
@@ -103,7 +102,6 @@ fn sys_process_aura_effects(
 
 fn sys_drain_effect_evs(mut effect_events: ResMut<Events<events::EffectQueueEvent>>) {
     effect_events.clear();
-    log::debug!("clearing effect processing tick");
 }
 
 #[derive(Resource)]

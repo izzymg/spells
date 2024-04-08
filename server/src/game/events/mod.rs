@@ -18,24 +18,6 @@ pub struct SpellApplicationEvent {
     pub spell_id: assets::SpellID,
 }
 
-/// Unit should start casting `spell_id` at `target`
-#[derive(Event)]
-pub struct StartCastingEvent {
-    pub entity: Entity,
-    pub target: Entity,
-    pub spell_id: assets::SpellID,
-}
-
-impl StartCastingEvent {
-    pub fn new(entity: Entity, target: Entity, spell_id: assets::SpellID) -> Self {
-        Self {
-            entity,
-            target,
-            spell_id,
-        }
-    }
-}
-
 /// Request to add an aura child to the given entity
 #[derive(Event, Debug)]
 pub struct AddAuraEvent {
@@ -56,7 +38,6 @@ impl Plugin for GameEventsPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app
             .init_resource::<Events<EffectQueueEvent>>() // we want to manually clear this one
-            .add_event::<StartCastingEvent>()
             .add_event::<SpellApplicationEvent>()
             .add_event::<AddAuraEvent>()
             .add_event::<RemoveAuraEvent>();

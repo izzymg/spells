@@ -1,4 +1,4 @@
-use bevy::{ecs::system::SystemParam, prelude::*};
+use bevy::prelude::*;
 use core::fmt;
 use std::time::Duration;
 
@@ -30,19 +30,7 @@ pub enum AuraType {
     Shield,
 }
 
-/// allow us to easily fetch effect data
-#[derive(SystemParam)]
-pub struct AuraSysResource<'w> {
-    weapons: Res<'w, AuraDatabase>,
-}
-
-impl<'w> AuraSysResource<'w> {
-    pub fn get_status_effect_data(&self, id: AuraID) -> Option<&AuraData> {
-        self.weapons.0.get(id.get())
-    }
-}
-
-/// complex info about a status effect
+/// Complex info about a status effect
 pub struct AuraData {
     pub name: String,
     pub base_multiplier: i64,
@@ -66,12 +54,18 @@ impl AuraData {
     }
 }
 
-// all our complex info about our status effects
+/// Maps aura IDs to aura data.
 #[derive(Resource)]
-pub struct AuraDatabase(pub Vec<AuraData>);
+pub struct AurasAsset(pub Vec<AuraData>);
 
-pub(super) fn get_auras_resource() -> AuraDatabase {
-    AuraDatabase(vec![
+impl AurasAsset {
+    pub fn lookup(&self, aura_id: AuraID) -> Option<&AuraData> {
+        self.0.get(aura_id.get())
+    }
+}
+
+pub(super) fn get_auras_resource() -> AurasAsset {
+    AurasAsset(vec![
         AuraData::new(
             "Immolated".into(),
             -5,
@@ -81,7 +75,7 @@ pub(super) fn get_auras_resource() -> AuraDatabase {
         AuraData::new(
             "Arcane Shield".into(),
             100,
-            Duration::from_secs(5),
+            Duration::from_secs(7),
             AuraType::Shield,
         ),
     ])

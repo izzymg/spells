@@ -62,16 +62,16 @@ impl SpellData {
 }
 
 #[derive(Resource)]
-pub struct SpellList(pub Vec<SpellData>);
+pub struct SpellsAsset(pub Vec<SpellData>);
 
-impl SpellList {
+impl SpellsAsset {
     pub fn get_spell_data(&self, id: SpellID) -> Option<&SpellData> {
         self.0.get(id.get())
     }
 }
 
-pub(super) fn get_spell_list_resource() -> SpellList {
-    SpellList(vec![
+pub(super) fn get_spell_list_resource() -> SpellsAsset {
+    SpellsAsset(vec![
         SpellData::new("Fire Ball".into(), 500)
             .with_target_hp(-50)
             .with_target_aura(0.into()),

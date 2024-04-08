@@ -7,11 +7,11 @@ use super::ServerSets;
 fn sys_add_aura_ev(
     mut ev_r: EventReader<events::AddAuraEvent>,
     mut commands: Commands,
-    auras_db: assets::AuraSysResource,
+    auras_asset: Res<assets::AurasAsset>,
 ) {
     for ev in ev_r.read() {
         // look up status
-        if let Some(aura_data) = auras_db.get_status_effect_data(ev.aura_id) {
+        if let Some(aura_data) = auras_asset.lookup(ev.aura_id) {
             // spawn base aura
             let base_entity = commands
                 .spawn((components::Aura {

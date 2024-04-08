@@ -23,7 +23,6 @@ pub enum ServerSets {
 }
 
 pub fn run_game_server() -> Result<(), Box<dyn Error>> {
-
     let mut app = app::App::new();
     let args: Vec<String> = env::args().collect();
     if let Some(scene) = args.get(1) {
@@ -36,28 +35,31 @@ pub fn run_game_server() -> Result<(), Box<dyn Error>> {
     }
 
     app.add_plugins((
-            MinimalPlugins,
-            LogPlugin {
-                filter: "".into(),
-                level: bevy::log::Level::INFO,
-                update_subscriber: None,
-            },
-            events::GameEventsPlugin,
-            net::NetPlugin,
-            effect_processing::EffectPlugin,
-            effect_creation::EffectCreationPlugin,
-            effect_application::EffectApplicationPlugin,
-            entity_processing::EntityProcessingPlugin,
-            assets::AssetsPlugin,
-        ))
-        .configure_sets(
-            FixedUpdate,
-            ServerSets::EntityProcessing
-                .before(ServerSets::EffectCreation)
-                .before(ServerSets::EffectProcessing)
-                .before(ServerSets::EffectApplication),
+        MinimalPlugins,
+        LogPlugin {
+            filter: "".into(),
+            level: bevy::log::Level::DEBUG,
+            update_subscriber: None,
+        },
+        events::GameEventsPlugin,
+        net::NetPlugin,
+        effect_processing::EffectPlugin,
+        effect_creation::EffectCreationPlugin,
+        effect_application::EffectApplicationPlugin,
+        entity_processing::EntityProcessingPlugin,
+        assets::AssetsPlugin,
+    ))
+    .configure_sets(
+        FixedUpdate,
+        (
+            ServerSets::EntityProcessing,
+            ServerSets::EffectCreation,
+            ServerSets::EffectProcessing,
+            ServerSets::EffectApplication,
         )
-        .insert_resource(Time::<Fixed>::from_hz(0.5))
-        .run();
+            .chain(),
+    )
+    .insert_resource(Time::<Fixed>::from_hz(0.5))
+    .run();
     Ok(())
 }

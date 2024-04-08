@@ -1,4 +1,5 @@
 mod spells;
+mod auras;
 use bevy::prelude::*;
 
 use super::ServerSets;
@@ -10,7 +11,6 @@ impl Plugin for EffectCreationPlugin {
         app.add_systems(
             FixedUpdate,
             (
-                spells::sys_start_casting_ev,
                 spells::sys_tick_casts,
                 spells::sys_validate_cast_targets,
                 spells::sys_finish_casts,
@@ -19,5 +19,9 @@ impl Plugin for EffectCreationPlugin {
                 .chain()
                 .in_set(ServerSets::EffectCreation),
         );
+        app.add_systems(FixedUpdate, (
+            auras::sys_apply_aura_tick,
+            auras::sys_tick_ticking_auras,
+        ));
     }
 }
