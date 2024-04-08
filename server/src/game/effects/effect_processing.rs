@@ -5,12 +5,10 @@ use bevy::{
         schedule::IntoSystemConfigs,
         system::{Query, Res, ResMut, SystemParam},
     },
-    hierarchy::Children, log, utils::info,
+    hierarchy::Children, log,
 };
 
-use crate::game::{auras, health};
-
-use super::EffectQueueEvent;
+use crate::game::{auras, health, events};
 
 #[derive(SystemParam)]
 struct ShieldQuery<'w, 's> {
@@ -60,7 +58,7 @@ impl<'w, 's> HealthQuery<'w, 's> {
 
 /// Apply damage events with respect to active target auras.
 fn sys_process_damage_effects(
-    effect_events: Res<Events<EffectQueueEvent>>,
+    effect_events: Res<Events<events::EffectQueueEvent>>,
     mut shield_query: ShieldQuery,
     mut health_query: HealthQuery,
 ) {
@@ -85,7 +83,7 @@ fn sys_process_damage_effects(
 
 /// Process aura events
 fn sys_process_aura_effects(
-    effect_events: Res<Events<EffectQueueEvent>>,
+    effect_events: Res<Events<events::EffectQueueEvent>>,
     mut ev_w: EventWriter<auras::AddAuraEvent>,
 ) {
     for effect in effect_events.get_reader().read(&effect_events) {
@@ -98,7 +96,7 @@ fn sys_process_aura_effects(
     }
 }
 
-fn sys_drain_effect_evs(mut effect_events: ResMut<Events<EffectQueueEvent>>) {
+fn sys_drain_effect_evs(mut effect_events: ResMut<Events<events::EffectQueueEvent>>) {
     effect_events.clear();
     log::debug!("clearing effect processing tick");
 }
@@ -122,7 +120,7 @@ mod tests {
         hierarchy::BuildWorldChildren,
     };
 
-    use crate::game::{auras, effects::EffectQueueEvent, health};
+    use crate::game::{auras, events::{self, EffectQueueEvent}, health};
 
     use super::sys_process_damage_effects;
 
@@ -136,7 +134,7 @@ mod tests {
         let expect_hp = hp + (total_shielding + total_damage);
 
         let mut app = app::App::new();
-        app.init_resource::<Events<EffectQueueEvent>>();
+        app.init_resource::<Events<events::EffectQueueEvent>>();
         app.add_systems(Update, sys_process_damage_effects);
 
         let skele = app.world.spawn(health::Health { hp }).id();
@@ -147,7 +145,7 @@ mod tests {
 
         for hit in hits {
             app.world
-                .get_resource_mut::<Events<EffectQueueEvent>>()
+                .get_resource_mut::<Events<events::EffectQueueEvent>>()
                 .unwrap()
                 .send(EffectQueueEvent {
                     aura_effect: None,

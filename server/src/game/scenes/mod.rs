@@ -3,7 +3,7 @@ use bevy::{
     hierarchy::BuildWorldChildren, log,
 };
 
-use super::{auras, effects::EffectQueueEvent, health};
+use super::{auras, events, health};
 
 pub fn sys_many_effects(world: &mut World) {
     let n_defenders = 20;
@@ -27,9 +27,9 @@ pub fn sys_many_effects(world: &mut World) {
     for target in defender_entities.iter() {
         for _ in 0..n_effects_per_defender {
             world
-                .get_resource_mut::<Events<EffectQueueEvent>>()
+                .get_resource_mut::<Events<events::EffectQueueEvent>>()
                 .unwrap()
-                .send(EffectQueueEvent {
+                .send(events::EffectQueueEvent {
                     target: *target,
                     health_effect: Some(effect_dmg),
                     aura_effect: None,

@@ -8,7 +8,7 @@ use bevy::{
     ecs::{
         component::Component,
         entity::Entity,
-        event::{Event, EventReader, EventWriter},
+        event::{EventReader, EventWriter},
         schedule::IntoSystemConfigs,
         system::{Commands, Query, Res},
     },
@@ -16,9 +16,8 @@ use bevy::{
     time::{Time, Timer},
 };
 
-use super::{
-    alignment::{self, Faction, Hostility},
-    ServerSets,
+use crate::game::{
+    alignment::{self, Faction, Hostility}, events, ServerSets
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,24 +41,6 @@ impl fmt::Display for SpellID {
     }
 }
 
-/// Unit should start casting `spell_id` at `target`
-#[derive(Event)]
-pub struct StartCastingEvent {
-    pub entity: Entity,
-    pub target: Entity,
-    pub spell_id: SpellID,
-}
-
-impl StartCastingEvent {
-    pub fn new(entity: Entity, target: Entity, spell_id: SpellID) -> Self {
-        Self {
-            entity,
-            target,
-            spell_id,
-        }
-    }
-}
-
 // Unit is casting a spell
 #[derive(Debug, Component)]
 pub struct CastingSpell {
@@ -78,17 +59,9 @@ impl CastingSpell {
     }
 }
 
-/// `spell_id` should be applied to `target`
-#[derive(Clone, Copy, Debug, Event)]
-pub struct SpellApplicationEvent {
-    pub origin: Entity,
-    pub target: Entity,
-    pub spell_id: SpellID,
-}
-
 /// Begin spell casts when event received
 fn sys_start_casting_ev(
-    mut events: EventReader<StartCastingEvent>,
+    mut events: EventReader<events::StartCastingEvent>,
     mut commands: Commands,
     spell_list: Res<resource::SpellList>,
 ) {
@@ -145,11 +118,11 @@ fn sys_validate_cast_targets(
     }
 }
 
-/// Send a `SpellApplicationEvent` for finished casts
+/// Dispatch `SpellApplicationEvent` for finished casts
 fn sys_finish_casts(
     mut commands: Commands,
     mut query: Query<(Entity, &mut CastingSpell)>,
-    mut spell_app_ev_w: EventWriter<SpellApplicationEvent>,
+    mut spell_app_ev_w: EventWriter<events::SpellApplicationEvent>,
 ) {
     for (entity, casting) in query.iter_mut() {
         if !casting.cast_timer.finished() {
@@ -158,7 +131,7 @@ fn sys_finish_casts(
         commands.entity(entity).remove::<CastingSpell>();
 
         // send spell application events
-        spell_app_ev_w.send(SpellApplicationEvent {
+        spell_app_ev_w.send(events::SpellApplicationEvent {
             origin: entity,
             spell_id: casting.spell_id,
             target: casting.target,
@@ -192,9 +165,7 @@ impl Plugin for SpellsPlugin {
                 .chain(),
         );
 
-        app.insert_resource(resource::get_spell_list_resource())
-            .add_event::<StartCastingEvent>()
-            .add_event::<SpellApplicationEvent>();
+        app.insert_resource(resource::get_spell_list_resource());
     }
 }
 

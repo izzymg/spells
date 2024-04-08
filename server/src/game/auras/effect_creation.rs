@@ -1,4 +1,4 @@
-use crate::game::effects;
+use crate::game::events;
 use bevy::{
     ecs::{
         event::EventWriter,
@@ -17,13 +17,13 @@ fn sys_ticking_effect_aura(
     mut query: Query<(&Parent, &super::Aura, &mut TickingEffectAura)>,
     aura_resource: super::resource::AuraSysResource,
     time: Res<Time>,
-    mut ev_w: EventWriter<effects::EffectQueueEvent>,
+    mut ev_w: EventWriter<events::EffectQueueEvent>,
 ) {
     for (parent, effect, mut hp_tick) in query.iter_mut() {
         hp_tick.ticker.tick(time.delta());
         if hp_tick.ticker.just_finished() {
             if let Some(effect_data) = aura_resource.get_status_effect_data(effect.id) {
-                ev_w.send(effects::EffectQueueEvent {
+                ev_w.send(events::EffectQueueEvent {
                     target: parent.get(),
                     health_effect: Some(effect_data.base_multiplier),
                     aura_effect: None,

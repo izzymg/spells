@@ -7,18 +7,18 @@ use bevy::{
     log,
 };
 
-use crate::game::effects;
+use crate::game::events;
 
-use super::{resource::SpellList, SpellApplicationEvent};
+use super::resource;
 
 fn sys_spell_application_ev(
-    spell_list: Res<SpellList>,
-    mut effect_ev_w: EventWriter<effects::EffectQueueEvent>,
-    mut spell_ev_r: EventReader<SpellApplicationEvent>,
+    spell_list: Res<resource::SpellList>,
+    mut effect_ev_w: EventWriter<events::EffectQueueEvent>,
+    mut spell_ev_r: EventReader<events::SpellApplicationEvent>,
 ) {
     for ev in spell_ev_r.read() {
         if let Some(spell_data) = spell_list.get_spell_data(ev.spell_id) {
-            effect_ev_w.send(effects::EffectQueueEvent {
+            effect_ev_w.send(events::EffectQueueEvent {
                 target: ev.target,
                 health_effect: spell_data.target_health_effect,
                 aura_effect: spell_data.target_aura_effect,
