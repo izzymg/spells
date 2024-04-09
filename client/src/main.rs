@@ -1,3 +1,4 @@
+mod game;
 mod ui;
 mod world_connection;
 use std::error::Error;
@@ -17,7 +18,12 @@ pub struct GameState(pub GameStates);
 fn main() -> Result<(), Box<dyn Error>> {
     {
         let mut app = bevy::app::App::new();
-        app.add_plugins((DefaultPlugins, WorldConnectionPlugin, ui::UiPlugin));
+        app.add_plugins((
+            DefaultPlugins,
+            WorldConnectionPlugin,
+            ui::UiPlugin,
+            game::GamePlugin,
+        ));
         app.insert_resource(GameState(GameStates::Menu));
         app.configure_sets(
             Update,

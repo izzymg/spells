@@ -5,6 +5,8 @@ pub mod serialization {
     use bincode;
     use serde::{Deserialize, Serialize};
 
+    pub type SerializationError = bincode::ErrorKind;
+
     #[derive(Deserialize, Serialize, Debug, Copy, Clone)]
     pub struct EntityCaster {
         pub entity: u32,
@@ -34,17 +36,17 @@ pub mod serialization {
     }
 
     impl WorldState {
-        pub fn serialize(&self) -> Result<Vec<u8>, bincode::ErrorKind> {
+        pub fn serialize(&self) -> Result<Vec<u8>, SerializationError> {
             match bincode::serialize(&self) {
                 Ok(data) => Ok(data),
                 Err(err) => Err(*err),
             }
         }
 
-        pub fn deserialize(data: &[u8]) -> Result<WorldState, bincode::ErrorKind> {
+        pub fn deserialize(data: &[u8]) -> Result<WorldState, SerializationError> {
             match bincode::deserialize::<WorldState>(data) {
                 Ok(state) => Ok(state),
-                Err(e) => Err(*e)
+                Err(e) => Err(*e),
             }
         }
     }

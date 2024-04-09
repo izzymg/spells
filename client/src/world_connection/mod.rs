@@ -1,6 +1,6 @@
 mod stream;
 
-pub use stream::{ServerStreamError, ServerStreamStatus};
+pub use stream::ServerStreamStatus;
 
 use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
 use lib_spells::serialization;
@@ -62,6 +62,11 @@ impl WorldConnection {
             world_state: None,
         }
     }
+    fn update_state_from_data(&mut self, data: Vec<u8>) {
+        self.world_state = Some(
+            serialization::WorldState::deserialize(&data).expect("deserialize should not fail"),
+        );
+    }
 }
 
 /// Run only if there's some connection
@@ -69,6 +74,7 @@ fn run_if_conn(thread_handle: Res<ThreadHandle>) -> bool {
     thread_handle.handle.is_some()
 }
 
+/// Check the receiver for the connection thread and handle new messages.
 fn sys_check_receiver(recv: NonSend<ThreadReceiver>, mut conn: ResMut<WorldConnection>) {
     if let Some(recv) = &recv.rx {
         if let Ok(msg) = recv.try_recv() {
@@ -76,8 +82,9 @@ fn sys_check_receiver(recv: NonSend<ThreadReceiver>, mut conn: ResMut<WorldConne
                 ServerStreamMessage::Status(msg) => {
                     conn.message = Some(WorldConnectionMessage::Status(msg));
                 }
-                ServerStreamMessage::Data(_) => {
-                    log::debug!("got world data");
+                ServerStreamMessage::Data(data) => {
+                    log::info!("got world data");
+                    conn.update_state_from_data(data);
                 }
             }
         }
