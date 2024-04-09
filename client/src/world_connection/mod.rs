@@ -1,5 +1,7 @@
 mod stream;
 
+pub use stream::{ServerStreamError, ServerStreamStatus};
+
 use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
 use lib_spells::serialization;
 
@@ -10,7 +12,7 @@ use self::stream::ServerStreamMessage;
 #[derive(Debug)]
 pub enum WorldConnectionMessage {
     Error(stream::ServerStreamError),
-    Message(String),
+    Status(stream::ServerStreamStatus),
 }
 
 impl From<stream::ServerStreamError> for WorldConnectionMessage {
@@ -22,8 +24,8 @@ impl From<stream::ServerStreamError> for WorldConnectionMessage {
 impl Display for WorldConnectionMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Error(err) => write!(f, "world connection... {}", err),
-            Self::Message(msg) => write!(f, "world connection... {msg}"),
+            Self::Error(err) => write!(f, "world connection error... {}", err),
+            Self::Status(msg) => write!(f, "world connection status... {}", msg),
         }
     }
 }
@@ -71,10 +73,12 @@ fn sys_check_receiver(recv: NonSend<ThreadReceiver>, mut conn: ResMut<WorldConne
     if let Some(recv) = &recv.rx {
         if let Ok(msg) = recv.try_recv() {
             match msg {
-                ServerStreamMessage::Info(msg) => {
-                    conn.message = Some(WorldConnectionMessage::Message(msg))
+                ServerStreamMessage::Status(msg) => {
+                    conn.message = Some(WorldConnectionMessage::Status(msg));
                 }
-                _ => (),
+                ServerStreamMessage::Data(_) => {
+                    log::debug!("got world data");
+                }
             }
         }
     }
@@ -103,7 +107,7 @@ fn sys_connect(
     mut thread_handle: ResMut<ThreadHandle>,
     mut conn: ResMut<WorldConnection>,
 ) {
-    conn.message = Some(WorldConnectionMessage::Message("connecting...".into()));
+    conn.message = None;
     let (tx, rx) = mpsc::channel();
     let handle = tasks::IoTaskPool::get().spawn(async move {
         let mut connection = stream::connect(&addr.clone())?;

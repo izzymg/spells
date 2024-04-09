@@ -3,7 +3,7 @@ use bevy::ecs::{
     system::{Commands, Res, ResMut, Resource},
 };
 
-use crate::world_connection;
+use crate::{world_connection, GameState, GameStates};
 
 #[derive(Resource, Debug, Default)]
 pub struct ConnectionStatus {
@@ -30,9 +30,16 @@ pub(super) fn sys_menu_connect_ev(
 
 pub(super) fn sys_update_connection_status(
     world_conn: Res<world_connection::WorldConnection>,
-    mut status: ResMut<ConnectionStatus>,
+    mut ui_status: ResMut<ConnectionStatus>,
+    mut game_state: ResMut<GameState>,
 ) {
     if let Some(msg) = &world_conn.message {
-        status.status = msg.to_string();
+        ui_status.status = msg.to_string();
+        if let world_connection::WorldConnectionMessage::Status(
+            world_connection::ServerStreamStatus::Connected,
+        ) = msg
+        {
+            game_state.0 = GameStates::Game;
+        }
     }
 }

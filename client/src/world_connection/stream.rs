@@ -53,8 +53,23 @@ pub type ServerStreamResult<T> = std::result::Result<T, ServerStreamError>;
 type Result<T> = ServerStreamResult<T>;
 
 #[derive(Debug, PartialEq)]
+pub enum ServerStreamStatus {
+    Handshaking,
+    Connected,
+}
+
+impl Display for ServerStreamStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Handshaking => write!(f, "handshaking"),
+            Self::Connected => write!(f, "connected"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ServerStreamMessage {
-    Info(String),
+    Status(ServerStreamStatus),
     Data(Vec<u8>),
 }
 
@@ -109,10 +124,10 @@ impl ServerStream {
 
     /// Block and listen to the world stream, sending new informaton to tx. Does handshake first.
     pub fn listen_handshake(&mut self, tx: Sender<ServerStreamMessage>) -> Result<()> {
-        tx.send(ServerStreamMessage::Info("handshaking".into()))
+        tx.send(ServerStreamMessage::Status(ServerStreamStatus::Handshaking))
             .expect("server listen: no receiver");
         self.handshake()?;
-        tx.send(ServerStreamMessage::Info("connected".into()))
+        tx.send(ServerStreamMessage::Status(ServerStreamStatus::Connected))
             .expect("server listen: no receiver");
         self.listen(tx)
     }
