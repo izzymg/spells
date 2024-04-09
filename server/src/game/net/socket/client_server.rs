@@ -63,9 +63,9 @@ impl PendingClient {
 
     /// read the client stream and return if the response
     pub fn validate(&mut self) -> Result<(), ClientValidationError> {
-        let mut buf = [0 as u8; lib_spells::SERVER_HEADER.as_bytes().len()];
+        let mut buf = [0 as u8; lib_spells::CLIENT_EXPECT.as_bytes().len()];
         self.client.read_fill(&mut buf)?;
-        if lib_spells::SERVER_HEADER.as_bytes() != buf {
+        if lib_spells::CLIENT_EXPECT.as_bytes() != buf {
             return Err(ClientValidationError::ErrInvalidHeader);
         }
         Ok(())
