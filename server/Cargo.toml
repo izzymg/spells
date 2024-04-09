@@ -15,7 +15,5 @@ opt-level = 3
 
 [dependencies]
 bevy = { version = "0.13.1", default-features = false, features = ["multi-threaded", "bevy_asset", "dynamic_linking", "bevy_debug_stepping"]}
-bincode = "1.3.3"
 mio = { version = "0.8.11", features = ["os-poll", "net"] }
-serde = { version = "1.0.197", features = ["derive"] }
 lib_spells = { version = "*", path = "../lib_spells" }
