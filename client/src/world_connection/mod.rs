@@ -89,7 +89,7 @@ fn sys_check_disconnect(
         log::info!("got disconnection {:?}", res);
         thread_handle.handle = None;
         if let Err(err) = res {
-            conn.message = Some(WorldConnectionMessage::Error(err.into()));
+            conn.message = Some(WorldConnectionMessage::Error(err));
         } else {
             unreachable!("the server shouldn't quietly fail");
         }

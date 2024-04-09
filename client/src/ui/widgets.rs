@@ -82,14 +82,11 @@ pub(super) fn sys_text_input_deletions(
     mut edit_text: Query<&mut Text, With<TextInput>>,
 ) {
     for ev in events.read() {
-        match ev.key_code {
-            KeyCode::Backspace => {
-                let text = edit_text.single_mut();
-                let mut chars = text.sections[0].value.chars();
-                chars.next_back();
-                edit_text.single_mut().sections[0].value = chars.as_str().into();
-            }
-            _ => (),
+        if ev.key_code == KeyCode::Backspace {
+            let text = edit_text.single_mut();
+            let mut chars = text.sections[0].value.chars();
+            chars.next_back();
+            edit_text.single_mut().sections[0].value = chars.as_str().into();
         }
     }
 }

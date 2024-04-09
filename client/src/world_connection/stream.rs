@@ -120,7 +120,7 @@ impl ServerStream {
     /// Block and listen to the world stream, sending new informaton to tx.
     pub fn listen(&mut self, tx: Sender<ServerStreamMessage>) -> Result<()> {
         // wait for length header
-        let mut header_buffer = [0 as u8; PREFIX_BYTES];
+        let mut header_buffer = [0_u8; PREFIX_BYTES];
 
         loop {
             // read header
@@ -170,9 +170,9 @@ mod tests {
             ListenTest {
                 data: "0".as_bytes().to_vec(),
             },
-            ListenTest { data: vec![05] },
+            ListenTest { data: vec![5] },
             ListenTest {
-                data: vec![05, 50, 30],
+                data: vec![5, 50, 30],
             },
         ];
 
@@ -187,13 +187,11 @@ mod tests {
 
             // write header bytes
             (&world_to_client_conn)
-                .write(&(message.len() as u32).to_le_bytes())
+                .write_all(&(message.len() as u32).to_le_bytes())
                 .unwrap();
             // write actual bytes
             (&world_to_client_conn).write_all(&message).unwrap();
-            let handle = thread::spawn(move || {
-                return client_to_world_conn.listen(tx);
-            });
+            let handle = thread::spawn(move || client_to_world_conn.listen(tx));
             let val = rx.recv().unwrap();
             assert_eq!(val, ServerStreamMessage::Data(message));
             world_to_client_conn
