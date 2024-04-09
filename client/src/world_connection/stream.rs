@@ -3,8 +3,6 @@ use std::{
     io::{self, BufRead, BufReader, BufWriter, Read, Write},
     net::{self, TcpStream},
     sync::mpsc::Sender,
-    thread,
-    time::Duration,
 };
 
 use bevy::log;
@@ -54,26 +52,15 @@ impl From<io::Error> for ServerStreamError {
 pub type ServerStreamResult<T> = std::result::Result<T, ServerStreamError>;
 type Result<T> = ServerStreamResult<T>;
 
-/// Try to create a new world connection from the given address
-pub fn connect_retry(addr: &str, delay: Duration) -> Result<ServerStream> {
-    let stream = loop {
-        match net::TcpStream::connect(addr) {
-            Ok(s) => {
-                log::info!("connected to {}", addr);
-                break s;
-            }
-            Err(err) => {
-                log::info!(
-                    "failed to connect to {}, retrying ({}) in {}s",
-                    addr,
-                    err,
-                    delay.as_secs()
-                );
-                thread::sleep(delay);
-            }
-        }
-    };
+#[derive(Debug, PartialEq)]
+pub enum ServerStreamMessage {
+    Info(String),
+    Data(Vec<u8>),
+}
 
+/// Try to create a new world connection from the given address
+pub fn connect(addr: &str) -> Result<ServerStream> {
+    let stream = net::TcpStream::connect(addr)?;
     ServerStream::handle(stream)
 }
 
@@ -120,8 +107,18 @@ impl ServerStream {
         Ok(())
     }
 
-    /// block until we get more state
-    pub fn listen(&mut self, tx: Sender<Result<Vec<u8>>>) -> Result<()> {
+    /// Block and listen to the world stream, sending new informaton to tx. Does handshake first.
+    pub fn listen_handshake(&mut self, tx: Sender<ServerStreamMessage>) -> Result<()> {
+        tx.send(ServerStreamMessage::Info("handshaking".into()))
+            .expect("server listen: no receiver");
+        self.handshake()?;
+        tx.send(ServerStreamMessage::Info("connected".into()))
+            .expect("server listen: no receiver");
+        self.listen(tx)
+    }
+
+    /// Block and listen to the world stream, sending new informaton to tx.
+    pub fn listen(&mut self, tx: Sender<ServerStreamMessage>) -> Result<()> {
         // wait for length header
         let mut header_buffer = [0 as u8; PREFIX_BYTES];
 
@@ -138,8 +135,8 @@ impl ServerStream {
 
             let mut message = vec![0; message_size as usize];
             self.reader.read_exact(&mut message)?;
-            tx.send(Ok(message))
-                .expect("server listen: No state receiver");
+            tx.send(ServerStreamMessage::Data(message))
+                .expect("server listen: no state receiver");
         }
     }
 }
@@ -152,6 +149,8 @@ mod tests {
         sync::mpsc,
         thread,
     };
+
+    use crate::world_connection::stream::ServerStreamMessage;
 
     use super::{ServerStream, ServerStreamError};
 
@@ -195,8 +194,8 @@ mod tests {
             let handle = thread::spawn(move || {
                 return client_to_world_conn.listen(tx);
             });
-            let val = rx.recv().unwrap().unwrap();
-            assert_eq!(val, message);
+            let val = rx.recv().unwrap();
+            assert_eq!(val, ServerStreamMessage::Data(message));
             world_to_client_conn
                 .shutdown(std::net::Shutdown::Both)
                 .unwrap();

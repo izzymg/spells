@@ -1,36 +1,29 @@
 mod stream;
 
-use bevy::{
-    ecs::system::SystemId, log, prelude::*, tasks::{self, Task}
-};
+use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
 use lib_spells::serialization;
 
-use std::{
-    fmt::Display,
-    sync::mpsc,
-    time::Duration,
-};
+use std::{fmt::Display, sync::mpsc};
+
+use self::stream::ServerStreamMessage;
 
 #[derive(Debug)]
-pub enum WorldConnectionError {
-    StreamError(stream::ServerStreamError),
-    HandshakeFailure,
+pub enum WorldConnectionMessage {
+    Error(stream::ServerStreamError),
+    Message(String),
 }
 
-impl From<stream::ServerStreamError> for WorldConnectionError {
+impl From<stream::ServerStreamError> for WorldConnectionMessage {
     fn from(value: stream::ServerStreamError) -> Self {
-        Self::StreamError(value)
+        Self::Error(value)
     }
 }
 
-impl Display for WorldConnectionError {
+impl Display for WorldConnectionMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::StreamError(err) => write!(f, "World Connection Error: {}", err),
-            Self::HandshakeFailure => write!(
-                f,
-                "World Connection Error: The server and client are incompatible (bad version?)"
-            ),
+            Self::Error(err) => write!(f, "world connection... {}", err),
+            Self::Message(msg) => write!(f, "world connection... {msg}"),
         }
     }
 }
@@ -40,7 +33,7 @@ impl Display for WorldConnectionError {
 // If that dies we catch it (somewhere, somehow) and set everything back to None
 #[derive(Default)]
 struct ThreadReceiver {
-    rx: Option<mpsc::Receiver<stream::ServerStreamResult<Vec<u8>>>>,
+    rx: Option<mpsc::Receiver<stream::ServerStreamMessage>>,
 }
 
 // for some fucking reason this has to be in a different resource
@@ -56,34 +49,15 @@ struct ThreadHandle {
 pub struct WorldConnection {
     pub connect_system: SystemId<String>,
     pub world_state: Option<serialization::WorldState>,
-    pub err: Option<WorldConnectionError>,
+    pub message: Option<WorldConnectionMessage>,
 }
 
 impl WorldConnection {
     fn new(connect_system: SystemId<String>) -> Self {
         Self {
             connect_system,
-            err: None,
+            message: None,
             world_state: None,
-        }
-    }
-}
-
-impl ThreadReceiver {
-    // todo: idk wtf is a sane thing to do if data receives fail
-    // if the channel goes down it means the thread died so we'll pick that up anyway? maybe?
-    pub fn try_recv_data(&self) -> Result<Option<Vec<u8>>, WorldConnectionError> {
-        // just fuckin ignore it if we're not connected
-        if self.rx.is_none() {
-            return Ok(None);
-        }
-        match self.rx.as_ref().unwrap().try_recv() {
-            // really should not unwrap this
-            Ok(res) => match res {
-                Ok(res) => Ok(Some(res)),
-                Err(err) => Err(err.into()),
-            }, // could just mutate self and set connected to false but blegh
-            _ => Ok(None),
         }
     }
 }
@@ -93,11 +67,32 @@ fn run_if_conn(thread_handle: Res<ThreadHandle>) -> bool {
     thread_handle.handle.is_some()
 }
 
+fn sys_check_receiver(recv: NonSend<ThreadReceiver>, mut conn: ResMut<WorldConnection>) {
+    if let Some(recv) = &recv.rx {
+        if let Ok(msg) = recv.try_recv() {
+            match msg {
+                ServerStreamMessage::Info(msg) => {
+                    conn.message = Some(WorldConnectionMessage::Message(msg))
+                }
+                _ => (),
+            }
+        }
+    }
+}
+
 /// Check for world disconnections and handle appropriately. ONLY DO THIS WHEN THERE'S A CONNECTION.
-fn sys_check_disconnect(mut thread_handle: ResMut<ThreadHandle>) {
+fn sys_check_disconnect(
+    mut thread_handle: ResMut<ThreadHandle>,
+    mut conn: ResMut<WorldConnection>,
+) {
     if let Some(res) = tasks::block_on(tasks::poll_once(thread_handle.handle.as_mut().unwrap())) {
         log::info!("got disconnection {:?}", res);
         thread_handle.handle = None;
+        if let Err(err) = res {
+            conn.message = Some(WorldConnectionMessage::Error(err.into()));
+        } else {
+            unreachable!("the server shouldn't quietly fail");
+        }
     }
 }
 
@@ -106,12 +101,13 @@ fn sys_connect(
     In(addr): In<String>,
     mut connection_res: NonSendMut<ThreadReceiver>,
     mut thread_handle: ResMut<ThreadHandle>,
+    mut conn: ResMut<WorldConnection>,
 ) {
+    conn.message = Some(WorldConnectionMessage::Message("connecting...".into()));
     let (tx, rx) = mpsc::channel();
     let handle = tasks::IoTaskPool::get().spawn(async move {
-        let mut connection = stream::connect_retry(&addr.clone(), Duration::from_secs(3)).unwrap();
-        connection.handshake().unwrap();
-        connection.listen(tx)
+        let mut connection = stream::connect(&addr.clone())?;
+        connection.listen_handshake(tx)
     });
 
     thread_handle.handle = Some(handle);
@@ -126,6 +122,9 @@ impl Plugin for WorldConnectionPlugin {
         app.insert_resource(WorldConnection::new(connect_system));
         app.insert_resource(ThreadHandle::default());
         app.insert_non_send_resource(ThreadReceiver::default());
-        app.add_systems(Update, sys_check_disconnect.run_if(run_if_conn));
+        app.add_systems(
+            Update,
+            (sys_check_disconnect, sys_check_receiver).run_if(run_if_conn),
+        );
     }
 }
