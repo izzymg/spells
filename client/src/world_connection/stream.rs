@@ -13,35 +13,35 @@ const PREFIX_BYTES: usize = 4;
 const MAX_MESSAGE_SIZE: u32 = 300;
 
 #[derive(Debug, PartialEq)]
-pub enum WorldConnectionError {
+pub enum ServerStreamError {
     InvalidServer,
     ConnectionEnded,
     BigMessage(u32),
     IO(io::ErrorKind),
 }
 
-impl std::error::Error for WorldConnectionError {}
+impl std::error::Error for ServerStreamError {}
 
-impl Display for WorldConnectionError {
+impl Display for ServerStreamError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WorldConnectionError::IO(io_err) => {
+            Self::IO(io_err) => {
                 write!(f, "IO error: {}", io_err)
             }
-            WorldConnectionError::InvalidServer => {
+            Self::InvalidServer => {
                 write!(f, "invalid server response")
             }
-            WorldConnectionError::ConnectionEnded => {
+            Self::ConnectionEnded => {
                 write!(f, "server connection ended")
             }
-            WorldConnectionError::BigMessage(size) => {
+            Self::BigMessage(size) => {
                 write!(f, "message too big: {} bytes", size)
             }
         }
     }
 }
 
-impl From<io::Error> for WorldConnectionError {
+impl From<io::Error> for ServerStreamError {
     fn from(value: io::Error) -> Self {
         if value.kind() == io::ErrorKind::UnexpectedEof {
             Self::ConnectionEnded
@@ -51,11 +51,11 @@ impl From<io::Error> for WorldConnectionError {
     }
 }
 
-pub type WorldStateConnectionResult<T> = std::result::Result<T, WorldConnectionError>;
-type Result<T> = WorldStateConnectionResult<T>;
+pub type ServerStreamResult<T> = std::result::Result<T, ServerStreamError>;
+type Result<T> = ServerStreamResult<T>;
 
 /// Try to create a new world connection from the given address
-pub fn connect_retry(addr: &str, delay: Duration) -> Result<WorldConnection> {
+pub fn connect_retry(addr: &str, delay: Duration) -> Result<ServerStream> {
     let stream = loop {
         match net::TcpStream::connect(addr) {
             Ok(s) => {
@@ -74,17 +74,17 @@ pub fn connect_retry(addr: &str, delay: Duration) -> Result<WorldConnection> {
         }
     };
 
-    WorldConnection::handle(stream)
+    ServerStream::handle(stream)
 }
 
-pub struct WorldConnection {
+pub struct ServerStream {
     reader: BufReader<net::TcpStream>,
     writer: BufWriter<net::TcpStream>,
 }
 
-impl WorldConnection {
+impl ServerStream {
     /// Consume a TCP stream as world connection
-    pub fn handle(stream: TcpStream) -> Result<WorldConnection> {
+    pub fn handle(stream: TcpStream) -> Result<ServerStream> {
         let writer = io::BufWriter::new(stream.try_clone()?);
         let reader = io::BufReader::new(stream);
         Ok(Self { reader, writer })
@@ -112,7 +112,7 @@ impl WorldConnection {
 
     pub fn handshake(&mut self) -> Result<()> {
         if !self.expect_header()? {
-            return Err(WorldConnectionError::InvalidServer);
+            return Err(ServerStreamError::InvalidServer);
         }
         log::info!("OK header from server");
         self.write_client_ok()?;
@@ -133,7 +133,7 @@ impl WorldConnection {
             // read message
             if message_size > MAX_MESSAGE_SIZE {
                 log::info!("big message {}", message_size);
-                return Err(WorldConnectionError::BigMessage(message_size));
+                return Err(ServerStreamError::BigMessage(message_size));
             }
 
             let mut message = vec![0; message_size as usize];
@@ -153,7 +153,7 @@ mod tests {
         thread,
     };
 
-    use super::{WorldConnection, WorldConnectionError};
+    use super::{ServerStream, ServerStreamError};
 
     struct ListenTest {
         data: Vec<u8>,
@@ -180,7 +180,7 @@ mod tests {
         for test in tests {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-            let mut client_to_world_conn = WorldConnection::handle(stream).unwrap();
+            let mut client_to_world_conn = ServerStream::handle(stream).unwrap();
             let (world_to_client_conn, _) = listener.accept().unwrap();
 
             let message = test.data;
@@ -202,7 +202,7 @@ mod tests {
                 .unwrap();
 
             let val = handle.join().unwrap();
-            assert_eq!(val.unwrap_err(), WorldConnectionError::ConnectionEnded);
+            assert_eq!(val.unwrap_err(), ServerStreamError::ConnectionEnded);
         }
     }
 }

@@ -1,22 +1,27 @@
 mod world_connection;
-mod world_state;
-
+mod ui;
 use std::error::Error;
 
-use bevy::{prelude::*, log};
+use bevy::prelude::*;
 use world_connection::WorldConnectionPlugin;
-use world_state::WorldStatePlugin;
 
-fn frame_sys() {
-    log::debug!("beep");
+#[derive(Debug, PartialEq, Eq)]
+pub enum GameStates {
+    Menu,
+    Game,
 }
+
+#[derive(Resource)]
+pub struct GameState(pub GameStates);
+
 
 fn main() -> Result<(), Box<dyn Error>> {
     {
-        bevy::app::App::new()
-            .add_systems(Update, frame_sys)
-            .add_plugins((DefaultPlugins, WorldConnectionPlugin, WorldStatePlugin))
-            .run();
+        let mut app = bevy::app::App::new();
+        app.add_plugins((DefaultPlugins, WorldConnectionPlugin, ui::UiPlugin));
+        app.insert_resource(GameState(GameStates::Menu));
+
+        app.run();
         Ok(())
     }
 }
