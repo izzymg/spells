@@ -45,7 +45,11 @@ impl TickingEffectAura {
     }
 }
 
-// Unit is casting a spell
+/// Unit can cast spells
+#[derive(Debug, Component)]
+pub struct SpellCaster;
+
+/// Unit is casting a spell
 #[derive(Debug, Component)]
 pub struct CastingSpell {
     pub spell_id: assets::SpellID,

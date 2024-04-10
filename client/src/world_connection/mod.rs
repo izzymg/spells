@@ -78,12 +78,12 @@ fn run_if_conn(thread_handle: Res<ThreadHandle>) -> bool {
 fn sys_check_receiver(recv: NonSend<ThreadReceiver>, mut conn: ResMut<WorldConnection>) {
     if let Some(recv) = &recv.rx {
         if let Ok(msg) = recv.try_recv() {
+            log::debug!("received server message");
             match msg {
                 ServerStreamMessage::Status(msg) => {
                     conn.message = Some(WorldConnectionMessage::Status(msg));
                 }
                 ServerStreamMessage::Data(data) => {
-                    log::info!("got world data");
                     conn.update_state_from_data(data);
                 }
             }

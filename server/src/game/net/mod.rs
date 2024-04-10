@@ -1,9 +1,9 @@
 mod serialize;
 mod socket;
-use std::{sync::mpsc, thread};
-use bevy::{app, log, prelude::*, utils::dbg};
 use super::components;
+use bevy::{app, ecs::component, log, prelude::*, utils::dbg};
 use lib_spells::serialization;
+use std::{sync::mpsc, thread};
 
 fn sys_create_state(world: &mut World) -> serialization::WorldState {
     let mut state: serialization::WorldState = default();
@@ -11,26 +11,32 @@ fn sys_create_state(world: &mut World) -> serialization::WorldState {
     state.health = world
         .iter_entities()
         .filter_map(|e| {
-            e.get::<components::Health>().and_then(|v| {
-                Some(serialization::EntityHealth {
+            e.get::<components::Health>()
+                .map(|v| serialization::EntityHealth {
                     health: v.0,
                     entity: e.id().index(),
                 })
-            })
         })
         .collect();
 
-    state.casters = world
+    state.casting_spell = world
         .iter_entities()
         .filter_map(|e| {
-            e.get::<components::CastingSpell>().and_then(|v| {
-                Some(serialization::EntityCaster {
-                    max_timer: v.cast_timer.duration().as_millis(),
-                    timer: v.cast_timer.elapsed().as_millis(),
+            e.get::<components::CastingSpell>()
+                .map(|v| serialization::EntityCastingSpell {
+                    max_timer: v.cast_timer.duration().as_millis() as u64,
+                    timer: v.cast_timer.elapsed().as_millis() as u64,
                     spell_id: v.spell_id.get(),
                     entity: e.id().index(),
                 })
-            })
+        })
+        .collect();
+
+    state.spell_casters = world
+        .iter_entities()
+        .filter_map(|e| {
+            e.get::<components::SpellCaster>()
+                .map(|v| serialization::EntitySpellCaster(e.id().index()))
         })
         .collect();
 
@@ -41,7 +47,7 @@ fn sys_create_state(world: &mut World) -> serialization::WorldState {
         .map(|(p, a)| serialization::EntityAura {
             aura_id: a.id.get(),
             entity: p.get().index(),
-            remaining: a.get_remaining_time().as_millis(),
+            remaining: a.get_remaining_time().as_millis() as u64,
         })
         .collect();
 

@@ -1,3 +1,4 @@
+mod game_view;
 mod main_menu_control;
 mod main_menu_view;
 mod widgets;
@@ -23,7 +24,8 @@ impl Plugin for UiPlugin {
                 main_menu_view::sys_update_status_text,
                 main_menu_control::sys_menu_connect_ev,
                 main_menu_control::sys_update_connection_status,
-            ).in_set(GameStates::Menu),
+            )
+                .in_set(GameStates::Menu),
         );
         app.insert_resource(main_menu_control::ConnectionStatus::default());
         app.add_event::<main_menu_control::ConnectEvent>();
@@ -35,6 +37,14 @@ impl Plugin for UiPlugin {
                 widgets::sys_text_input_deletions,
             )
                 .in_set(GameStates::Menu),
+        );
+        app.add_systems(
+            Update,
+            (
+                game_view::sys_add_casting_ui,
+                game_view::sys_render_casters_ui,
+            )
+                .in_set(GameStates::Game),
         );
     }
 }

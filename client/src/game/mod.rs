@@ -1,12 +1,18 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
-use bevy::{ecs::system::SystemId, log, prelude::*};
+use bevy::{log, prelude::*};
 
 use crate::{world_connection, GameState, GameStates};
 
+//// 00000000000000000000000000000000000000000
+//// 00000000000000000000000000000000000000000
+//// 0000 WE LOVE CASTING SPELLS AND SHIT 0000
+//// 00000000000000000000000000000000000000000
+//// 00000000000000000000000000000000000000000
+
 /// Maps server entities to our entities
 #[derive(Resource, Debug, Default)]
-struct ServerClientMap(HashMap<Entity, Entity>);
+struct ServerClientMap(HashMap<u32, Entity>);
 
 /// Marker
 #[derive(Component, Debug, Default)]
@@ -16,6 +22,25 @@ struct GameObject;
 struct GameCameraBundle {
     go: GameObject,
     bundle: Camera3dBundle,
+}
+
+/// Cast timer for a spell
+#[derive(Component)]
+pub struct CastingSpell {
+    pub spell_id: usize,
+    pub timer: Timer,
+}
+
+/// Marker
+#[derive(Component)]
+pub struct SpellCaster;
+
+impl CastingSpell {
+    fn new(spell_id: usize, current_ms: u64, max_ms: u64) -> Self {
+        let mut timer = Timer::new(Duration::from_millis(max_ms), TimerMode::Once);
+        timer.set_elapsed(Duration::from_millis(current_ms));
+        Self { spell_id, timer }
+    }
 }
 
 fn sys_handle_world_messages(
@@ -34,22 +59,69 @@ fn sys_handle_world_messages(
 fn sys_handle_world_state(
     mut commands: Commands,
     mut server_client_map: ResMut<ServerClientMap>,
-    world_state: Res<world_connection::WorldConnection>,
+    world_conn: Res<world_connection::WorldConnection>,
 ) {
+    if !world_conn.is_changed() {
+        return;
+    }
+    if let Some(state) = &world_conn.world_state {
+        log::debug!("world state process");
+        for caster in state.casting_spell.iter() {
+            // GENERIC?
+
+            // get or spawn caster
+            let client_entity = match server_client_map.0.get(&caster.entity) {
+                Some(&client_entity) => client_entity,
+                None => commands.spawn(GameObject).id(),
+            };
+
+            server_client_map.0.insert(caster.entity, client_entity);
+
+            // update caster
+            let casting = commands
+                .entity(client_entity)
+                .insert(CastingSpell::new(
+                    caster.spell_id,
+                    caster.timer,
+                    caster.max_timer,
+                ))
+                .id();
+            log::debug!("casting {:?}", casting);
+        }
+
+        for caster in state.spell_casters.iter() {
+            // get or spawn caster
+            let client_entity = match server_client_map.0.get(&caster.0) {
+                Some(&client_entity) => client_entity,
+                None => commands.spawn(GameObject).id(),
+            };
+
+            server_client_map.0.insert(caster.0, client_entity);
+
+            let caster = commands.entity(client_entity).insert(SpellCaster).id();
+            log::debug!("caster {:?}", caster);
+        }
+    }
 }
 
-fn sys_spawn_game_world(mut commands: Commands, game_state: Res<GameState>) {
+fn sys_spawn_game_world(
+    mut commands: Commands,
+    game_state: Res<GameState>,
+    mut server_client_map: ResMut<ServerClientMap>,
+) {
     if !(game_state.is_changed() && game_state.0 == GameStates::Game) {
         return;
     }
     log::info!("spawning game world");
     commands.spawn(GameCameraBundle::default());
+    server_client_map.0.clear();
 }
 
 fn sys_cleanup_game_world(
     mut commands: Commands,
     game_state: Res<GameState>,
     go_query: Query<Entity, With<GameObject>>,
+    mut server_client_map: ResMut<ServerClientMap>,
 ) {
     if !(game_state.is_changed() && game_state.0 != GameStates::Game) {
         return;
@@ -58,6 +130,7 @@ fn sys_cleanup_game_world(
     for entity in go_query.iter() {
         commands.entity(entity).despawn_recursive();
     }
+    server_client_map.0.clear();
 }
 
 pub struct GamePlugin;
@@ -68,9 +141,12 @@ impl Plugin for GamePlugin {
             Update,
             (
                 sys_spawn_game_world,
-                sys_handle_world_messages,
-                sys_handle_world_state,
-                sys_cleanup_game_world,
+                (
+                    sys_handle_world_messages,
+                    sys_handle_world_state,
+                    sys_cleanup_game_world,
+                )
+                    .chain(),
             )
                 .in_set(GameStates::Game),
         );

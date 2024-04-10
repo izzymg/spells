@@ -8,12 +8,15 @@ pub mod serialization {
     pub type SerializationError = bincode::ErrorKind;
 
     #[derive(Deserialize, Serialize, Debug, Copy, Clone)]
-    pub struct EntityCaster {
+    pub struct EntityCastingSpell {
         pub entity: u32,
-        pub timer: u128,
-        pub max_timer: u128,
+        pub timer: u64,
+        pub max_timer: u64,
         pub spell_id: usize,
     }
+
+    #[derive(Deserialize, Serialize, Debug, Copy, Clone)]
+    pub struct EntitySpellCaster(pub u32);
 
     #[derive(Deserialize, Serialize, Debug, Copy, Clone)]
     pub struct EntityHealth {
@@ -25,13 +28,14 @@ pub mod serialization {
     pub struct EntityAura {
         pub entity: u32,
         pub aura_id: usize,
-        pub remaining: u128,
+        pub remaining: u64,
     }
 
     #[derive(Deserialize, Serialize, Debug, Default)]
     pub struct WorldState {
         pub health: Vec<EntityHealth>,
-        pub casters: Vec<EntityCaster>,
+        pub casting_spell: Vec<EntityCastingSpell>,
+        pub spell_casters: Vec<EntitySpellCaster>,
         pub auras: Vec<EntityAura>,
     }
 

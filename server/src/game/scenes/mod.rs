@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::game::{components, events};
 use bevy::{log, prelude::*};
 
-use super::components::{CastingSpell, Health};
+use super::components::{CastingSpell, Health, SpellCaster};
 
 pub fn get_scene(name: &str) -> Option<fn(&mut World)> {
     match name {
@@ -51,24 +51,25 @@ pub fn sys_many_effects(world: &mut World) {
 
 pub fn sys_spells(world: &mut World) {
     let skeleton = world.spawn(Health(150)).id();
-    world
-    .entity_mut(skeleton)
-    .insert(CastingSpell::new(2.into(), skeleton, Duration::from_secs(1)));
-    let damagers = 2;
-    let healers = 3;
+    world.entity_mut(skeleton).insert((
+        SpellCaster,
+        CastingSpell::new(2.into(), skeleton, Duration::from_secs(10)),
+    ));
+    let damagers = 1;
+    let healers = 1;
 
     for _ in 0..damagers {
         world.spawn(components::CastingSpell::new(
             0.into(),
             skeleton,
-            Duration::from_secs(3),
+            Duration::from_secs(10),
         ));
     }
     for _ in 0..healers {
         world.spawn(components::CastingSpell::new(
             1.into(),
             skeleton,
-            Duration::from_secs(3),
+            Duration::from_secs(10),
         ));
     }
 }
