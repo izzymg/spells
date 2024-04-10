@@ -21,7 +21,39 @@ struct GameObject;
 #[derive(Bundle, Default)]
 struct GameCameraBundle {
     go: GameObject,
-    bundle: Camera3dBundle,
+    cam: Camera3dBundle,
+}
+
+#[derive(Bundle, Default)]
+struct MeshMatGameObjectBundle {
+    go: GameObject,
+    cube: PbrBundle,
+}
+
+impl MeshMatGameObjectBundle {
+    fn new(mesh: Handle<Mesh>, material: Handle<StandardMaterial>) -> Self {
+        Self {
+            go: GameObject,
+            cube: PbrBundle {
+                mesh,
+                material,
+                transform: Transform::from_xyz(0.0, 0.5, 1.0),
+                ..Default::default()
+            },
+        }
+    }
+}
+
+impl GameCameraBundle {
+    fn new() -> Self {
+        Self {
+            go: GameObject,
+            cam: Camera3dBundle {
+                transform: Transform::from_xyz(0.0, 12.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
+                ..Default::default()
+            },
+        }
+    }
 }
 
 /// Cast timer for a spell
@@ -60,19 +92,26 @@ fn sys_handle_world_state(
     mut commands: Commands,
     mut server_client_map: ResMut<ServerClientMap>,
     world_conn: Res<world_connection::WorldConnection>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if !world_conn.is_changed() {
         return;
     }
     if let Some(state) = &world_conn.world_state {
         log::debug!("world state process");
+
+        let mesh = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
+        let material = materials.add(Color::hsl(0.0, 0.0, 0.1));
         for caster in state.casting_spell.iter() {
-            // GENERIC?
+            // MAKE GENERIC OR SYSTEM PARAM
 
             // get or spawn caster
             let client_entity = match server_client_map.0.get(&caster.entity) {
                 Some(&client_entity) => client_entity,
-                None => commands.spawn(GameObject).id(),
+                None => commands
+                    .spawn(MeshMatGameObjectBundle::new(mesh.clone(), material.clone()))
+                    .id(),
             };
 
             server_client_map.0.insert(caster.entity, client_entity);
@@ -93,7 +132,7 @@ fn sys_handle_world_state(
             // get or spawn caster
             let client_entity = match server_client_map.0.get(&caster.0) {
                 Some(&client_entity) => client_entity,
-                None => commands.spawn(GameObject).id(),
+                None => commands.spawn(GameObject::default()).id(),
             };
 
             server_client_map.0.insert(caster.0, client_entity);
@@ -113,7 +152,7 @@ fn sys_spawn_game_world(
         return;
     }
     log::info!("spawning game world");
-    commands.spawn(GameCameraBundle::default());
+    commands.spawn(GameCameraBundle::new());
     server_client_map.0.clear();
 }
 

@@ -3,7 +3,7 @@ mod main_menu_control;
 mod main_menu_view;
 mod widgets;
 
-use bevy::prelude::*;
+use bevy::{prelude::*, render::view::PostProcessWrite};
 
 use crate::GameStates;
 
@@ -39,7 +39,7 @@ impl Plugin for UiPlugin {
                 .in_set(GameStates::Menu),
         );
         app.add_systems(
-            Update,
+            PostUpdate,
             (
                 game_view::sys_add_casting_ui,
                 game_view::sys_render_casters_ui,
