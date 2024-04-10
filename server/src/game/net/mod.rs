@@ -1,4 +1,3 @@
-mod serialize;
 mod socket;
 use super::components;
 use bevy::{app, log, prelude::*, utils::dbg};
