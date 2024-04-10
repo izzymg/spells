@@ -47,10 +47,19 @@ struct ThreadHandle {
     handle: Option<tasks::Task<Result<(), stream::ServerStreamError>>>,
 }
 
+// Describes a change made to a stored WorldState
+#[derive(Debug, Resource, Default)]
+pub struct WorldStateChange {
+    /// If true, this server entity is new.
+    pub new_server_keys: Vec<(u32, bool)>,
+    pub lost_server_keys: Vec<u32>,
+}
+
 #[derive(Debug, Resource)]
 pub struct WorldConnection {
     pub connect_system: SystemId<String>,
-    pub world_state: Option<serialization::WorldState>,
+    pub cached_state: Option<serialization::WorldState>,
+    pub state_change: Option<WorldStateChange>,
     pub message: Option<WorldConnectionMessage>,
 }
 
@@ -59,13 +68,9 @@ impl WorldConnection {
         Self {
             connect_system,
             message: None,
-            world_state: None,
+            cached_state: None,
+            state_change: None,
         }
-    }
-    fn update_state_from_data(&mut self, data: Vec<u8>) {
-        self.world_state = Some(
-            serialization::WorldState::deserialize(&data).expect("deserialize should not fail"),
-        );
     }
 }
 
@@ -84,7 +89,34 @@ fn sys_check_receiver(recv: NonSend<ThreadReceiver>, mut conn: ResMut<WorldConne
                     conn.message = Some(WorldConnectionMessage::Status(msg));
                 }
                 ServerStreamMessage::Data(data) => {
-                    conn.update_state_from_data(data);
+                    let new_state = serialization::WorldState::deserialize(&data)
+                        .expect("deserialization shouldn't fail");
+                    // if we never had state set new state
+                    if conn.cached_state.is_none() {
+                        conn.cached_state = Some(new_state);
+                        return;
+                    }
+                    let cached_state = conn.cached_state.as_ref().unwrap();
+                    // every entity that's in new, that wasn't in the cache
+                    let state_change = WorldStateChange {
+                        new_server_keys: new_state
+                            .entity_state_map
+                            .keys()
+                            .copied()
+                            .map(|k| (k, !cached_state.entity_state_map.contains_key(&k)))
+                            .collect(),
+
+                        // every entity that was in our cache that isn't in new
+                        lost_server_keys: cached_state
+                            .entity_state_map
+                            .keys()
+                            .copied()
+                            .filter(|k| !new_state.entity_state_map.contains_key(k))
+                            .collect(),
+                    };
+
+                    conn.cached_state = Some(new_state);
+                    conn.state_change = Some(state_change);
                 }
             }
         }

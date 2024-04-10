@@ -1,55 +1,61 @@
 mod serialize;
 mod socket;
 use super::components;
-use bevy::{app, ecs::component, log, prelude::*, utils::dbg};
+use bevy::{app, log, prelude::*, utils::dbg};
 use lib_spells::serialization;
 use std::{sync::mpsc, thread};
 
 fn sys_create_state(world: &mut World) -> serialization::WorldState {
     let mut state: serialization::WorldState = default();
 
-    state.health = world
-        .iter_entities()
-        .filter_map(|e| {
-            e.get::<components::Health>()
-                .map(|v| serialization::EntityHealth {
-                    health: v.0,
-                    entity: e.id().index(),
-                })
-        })
-        .collect();
+    // health
+    for (entity, hp) in world.query::<(Entity, &components::Health)>().iter(world) {
+        state.update(
+            entity.index(),
+            serialization::EntityState::default()
+                .with_health(serialization::EntityHealth { health: hp.0 }),
+        );
+    }
 
-    state.casting_spell = world
-        .iter_entities()
-        .filter_map(|e| {
-            e.get::<components::CastingSpell>()
-                .map(|v| serialization::EntityCastingSpell {
-                    max_timer: v.cast_timer.duration().as_millis() as u64,
-                    timer: v.cast_timer.elapsed().as_millis() as u64,
-                    spell_id: v.spell_id.get(),
-                    entity: e.id().index(),
-                })
-        })
-        .collect();
+    // spell casts
+    for (entity, cast) in world
+        .query::<(Entity, &components::CastingSpell)>()
+        .iter(world)
+    {
+        state.update(
+            entity.index(),
+            serialization::EntityState::default().with_casting_spell(
+                serialization::EntityCastingSpell {
+                    max_timer: cast.cast_timer.duration().as_millis() as u64,
+                    timer: cast.cast_timer.elapsed().as_millis() as u64,
+                    spell_id: cast.spell_id.get(),
+                },
+            ),
+        );
+    }
 
-    state.spell_casters = world
-        .iter_entities()
-        .filter_map(|e| {
-            e.get::<components::SpellCaster>()
-                .map(|v| serialization::EntitySpellCaster(e.id().index()))
-        })
-        .collect();
+    // casters
+    for (entity, _) in world
+        .query::<(Entity, &components::SpellCaster)>()
+        .iter(world)
+    {
+        state.update(
+            entity.index(),
+            serialization::EntityState::default()
+                .with_spell_caster(serialization::EntitySpellCaster),
+        );
+    }
 
-    let mut aura_query = world.query::<(&Parent, &components::Aura)>();
-    state.auras = world
-        .iter_entities()
-        .flat_map(|e| aura_query.get(world, e.id()))
-        .map(|(p, a)| serialization::EntityAura {
-            aura_id: a.id.get(),
-            entity: p.get().index(),
-            remaining: a.get_remaining_time().as_millis() as u64,
-        })
-        .collect();
+    // auras
+    for (parent, aura) in world.query::<(&Parent, &components::Aura)>().iter(world) {
+        state.update(
+            parent.get().index(),
+            serialization::EntityState::default().with_aura(serialization::EntityAura {
+                aura_id: aura.id.get(),
+                remaining: aura.get_remaining_time().as_millis() as u64,
+            }),
+        );
+    }
 
     state
 }
@@ -80,7 +86,7 @@ impl ClientStreamSender {
 
     // Returns false if sending is now impossible (very bad)
     pub fn send_data(&mut self, data: Vec<u8>) -> bool {
-        !self.0.send(data).is_err()
+        self.0.send(data).is_ok()
     }
 }
 

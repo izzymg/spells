@@ -1,6 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
-use bevy::{log, prelude::*};
+use bevy::{ecs::system::SystemParam, log, prelude::*};
+use lib_spells::serialization;
 
 use crate::{world_connection, GameState, GameStates};
 
@@ -63,6 +64,14 @@ pub struct CastingSpell {
     pub timer: Timer,
 }
 
+/// This entity is ALIVE
+#[derive(Component, Debug)]
+pub struct Health(pub i64);
+
+/// List of aura IDs
+#[derive(Component, Debug)]
+pub struct Auras(pub Vec<usize>);
+
 /// Marker
 #[derive(Component)]
 pub struct SpellCaster;
@@ -88,57 +97,64 @@ fn sys_handle_world_messages(
     }
 }
 
+#[derive(SystemParam)]
+struct WorldStateSysParam<'w, 's> {
+    commands: Commands<'w, 's>,
+    query_auras: Query<'w, 's, &'static mut Auras>,
+}
+
+impl<'w, 's> WorldStateSysParam<'w, 's> {
+    // todo: probably just re-export EntityState from world_conn tbh
+    fn push_entity_state(&mut self, entity: Entity, state: &serialization::EntityState) {
+        if state.spell_caster.is_some() {
+            self.commands.entity(entity).insert(SpellCaster);
+        }
+        if let Some(casting) = state.casting_spell {
+            self.commands.entity(entity).insert(CastingSpell::new(
+                casting.spell_id,
+                casting.timer,
+                casting.max_timer,
+            ));
+        }
+
+        if let Some(health) = state.health {
+            self.commands.entity(entity).insert(Health(health.health));
+        }
+
+        for aura in state.auras.iter() {
+            if let Ok(mut entity_auras) = self.query_auras.get_mut(entity) {
+                // already have some to add to
+                entity_auras.0.push(aura.aura_id);
+            }
+        }
+    }
+
+    fn spawn_gameobject(&mut self) -> Entity {
+        self.commands.spawn(GameObject).id()
+    }
+}
 fn sys_handle_world_state(
-    mut commands: Commands,
+    mut sys_params: WorldStateSysParam,
     mut server_client_map: ResMut<ServerClientMap>,
     world_conn: Res<world_connection::WorldConnection>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if !world_conn.is_changed() {
         return;
     }
-    if let Some(state) = &world_conn.world_state {
-        log::debug!("world state process");
+    if let Some(world_state) = &world_conn.cached_state {
+        log::debug!("game processing world state");
 
-        let mesh = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
-        let material = materials.add(Color::hsl(0.0, 0.0, 0.1));
-        for caster in state.casting_spell.iter() {
-            // MAKE GENERIC OR SYSTEM PARAM
-
-            // get or spawn caster
-            let client_entity = match server_client_map.0.get(&caster.entity) {
-                Some(&client_entity) => client_entity,
-                None => commands
-                    .spawn(MeshMatGameObjectBundle::new(mesh.clone(), material.clone()))
-                    .id(),
-            };
-
-            server_client_map.0.insert(caster.entity, client_entity);
-
-            // update caster
-            let casting = commands
-                .entity(client_entity)
-                .insert(CastingSpell::new(
-                    caster.spell_id,
-                    caster.timer,
-                    caster.max_timer,
-                ))
-                .id();
-            log::debug!("casting {:?}", casting);
-        }
-
-        for caster in state.spell_casters.iter() {
-            // get or spawn caster
-            let client_entity = match server_client_map.0.get(&caster.0) {
-                Some(&client_entity) => client_entity,
-                None => commands.spawn(GameObject::default()).id(),
-            };
-
-            server_client_map.0.insert(caster.0, client_entity);
-
-            let caster = commands.entity(client_entity).insert(SpellCaster).id();
-            log::debug!("caster {:?}", caster);
+        if let Some(world_change) = &world_conn.state_change {
+            // we need to process change
+        } else {
+            // we just want to spawn everything in here
+            log::debug!("this is a first time world gen");
+            for (entity, state) in world_state.entity_state_map.iter() {
+                let new_entity = sys_params.spawn_gameobject();
+                server_client_map.0.insert(*entity, new_entity);
+                sys_params.push_entity_state(new_entity, state);
+                log::debug!("spawned {:?} with state: {:?}", new_entity, state);
+            }
         }
     }
 }

@@ -59,17 +59,15 @@ pub fn sys_spells(world: &mut World) {
     let healers = 1;
 
     for _ in 0..damagers {
-        world.spawn(components::CastingSpell::new(
-            0.into(),
-            skeleton,
-            Duration::from_secs(10),
+        world.spawn((
+            SpellCaster,
+            CastingSpell::new(0.into(), skeleton, Duration::from_secs(10)),
         ));
     }
     for _ in 0..healers {
-        world.spawn(components::CastingSpell::new(
-            1.into(),
-            skeleton,
-            Duration::from_secs(10),
+        world.spawn((
+            SpellCaster,
+            CastingSpell::new(1.into(), skeleton, Duration::from_secs(10)),
         ));
     }
 }
