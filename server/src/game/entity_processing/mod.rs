@@ -1,5 +1,6 @@
 use crate::game::components;
 use bevy::prelude::*;
+use lib_spells::serialization;
 
 use super::ServerSets;
 
@@ -18,7 +19,7 @@ fn sys_tick_clean_auras(
 }
 
 /// Kills entities with no health, recursively (!!)
-fn sys_despawn_dead(mut commands: Commands, query: Query<(Entity, &components::Health)>) {
+fn sys_despawn_dead(mut commands: Commands, query: Query<(Entity, &serialization::Health)>) {
     for (entity, health) in query.iter() {
         if health.0 <= 0 {
             commands.entity(entity).despawn_recursive();

@@ -16,10 +16,6 @@ pub struct Position {
     pub z: f64,
 }
 
-/// Entity that can die
-#[derive(Debug, Component, Default)]
-pub struct Health(pub i64);
-
 /// Represents one aura belonging to the parent of this entity.
 #[derive(Component)]
 pub struct Aura {

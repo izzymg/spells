@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use bevy::{ecs::system::SystemParam, log, prelude::*};
+use lib_spells::serialization;
 
 use crate::game::{components, events};
 
@@ -40,7 +41,7 @@ impl<'w, 's> ShieldQuery<'w, 's> {
 
 #[derive(SystemParam)]
 struct HealthQuery<'w, 's> {
-    query_health: Query<'w, 's, &'static mut components::Health>,
+    query_health: Query<'w, 's, &'static mut serialization::Health>,
 }
 
 impl<'w, 's> HealthQuery<'w, 's> {
@@ -57,7 +58,11 @@ fn sys_bench_start(mut timing: ResMut<TimingResource>) {
 }
 
 fn sys_bench_fin(timing: Res<TimingResource>) {
-    log::info!("bench processing end: took {}ms ({}us)", timing.processing_time.elapsed().as_millis(), timing.processing_time.elapsed().as_micros());
+    log::info!(
+        "bench processing end: took {}ms ({}us)",
+        timing.processing_time.elapsed().as_millis(),
+        timing.processing_time.elapsed().as_micros()
+    );
 }
 
 /// Apply damage events with respect to active target auras.
@@ -106,13 +111,15 @@ fn sys_drain_effect_evs(mut effect_events: ResMut<Events<events::EffectQueueEven
 
 #[derive(Resource)]
 struct TimingResource {
-    processing_time: Instant
+    processing_time: Instant,
 }
 
 pub struct EffectPlugin;
 impl Plugin for EffectPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.insert_resource(TimingResource { processing_time: Instant::now() });
+        app.insert_resource(TimingResource {
+            processing_time: Instant::now(),
+        });
         app.add_systems(
             FixedUpdate,
             (
@@ -136,6 +143,7 @@ mod tests {
         ecs::event::Events,
         hierarchy::BuildWorldChildren,
     };
+    use lib_spells::serialization;
 
     use crate::game::{components, events};
 
@@ -154,12 +162,9 @@ mod tests {
         app.init_resource::<Events<events::EffectQueueEvent>>();
         app.add_systems(Update, sys_process_damage_effects);
 
-        let skele = app.world.spawn(components::Health(hp)).id();
+        let skele = app.world.spawn(serialization::Health(hp)).id();
         for shield in shields {
-            let child = app
-                .world
-                .spawn(components::ShieldAura(shield))
-                .id();
+            let child = app.world.spawn(components::ShieldAura(shield)).id();
             app.world.entity_mut(skele).add_child(child);
         }
 
@@ -175,7 +180,7 @@ mod tests {
         }
         app.update();
 
-        let remaining_hp = app.world.get::<components::Health>(skele).unwrap().0;
+        let remaining_hp = app.world.get::<serialization::Health>(skele).unwrap().0;
         assert_eq!(remaining_hp, expect_hp);
     }
 }

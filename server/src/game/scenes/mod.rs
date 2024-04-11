@@ -3,7 +3,9 @@ use std::time::Duration;
 use crate::game::{components, events};
 use bevy::{log, prelude::*};
 
-use super::components::{CastingSpell, Health, SpellCaster};
+use super::components::{CastingSpell, SpellCaster};
+
+use lib_spells::serialization;
 
 pub fn get_scene(name: &str) -> Option<fn(&mut World)> {
     match name {
@@ -28,7 +30,7 @@ pub fn sys_many_effects(world: &mut World) {
 
     let mut defender_entities = vec![];
     for _ in 0..n_defenders {
-        let defender = world.spawn(components::Health(defender_hp)).id();
+        let defender = world.spawn(serialization::Health(defender_hp)).id();
         defender_entities.push(defender);
         for _ in 0..n_shields {
             let shield = world.spawn(components::ShieldAura(shield_val)).id();
@@ -50,7 +52,7 @@ pub fn sys_many_effects(world: &mut World) {
 }
 
 pub fn sys_spells(world: &mut World) {
-    let skeleton = world.spawn(Health(25)).id();
+    let skeleton = world.spawn(serialization::Health(25)).id();
     world.entity_mut(skeleton).insert((
         SpellCaster,
         CastingSpell::new(2.into(), skeleton, Duration::from_secs(1000)),

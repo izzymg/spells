@@ -1,5 +1,5 @@
 mod socket;
-use bevy::{app, log, prelude::*, utils::dbg};
+use bevy::{app, log, prelude::*, tasks::IoTaskPool, utils::dbg};
 use lib_spells::serialization;
 use std::sync::mpsc;
 
@@ -55,7 +55,13 @@ impl Plugin for NetPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         let mut client_getter = socket::client_server::ClientServer::create().unwrap();
         let (tx, rx) = mpsc::channel();
-        client_getter.event_loop(rx);
+
+        IoTaskPool::get()
+            .spawn(async move {
+                log::debug!("client event loop task spawned");
+                client_getter.event_loop(rx);
+            })
+            .detach();
 
         app.insert_resource(ClientStreamSender::new(tx));
 
