@@ -4,7 +4,6 @@ use std::{env, error::Error};
 use bevy::{app, log::LogPlugin, prelude::*};
 
 pub mod assets;
-pub mod components;
 pub mod effect_application;
 pub mod effect_creation;
 pub mod effect_processing;

@@ -1,8 +1,40 @@
-use crate::game::{assets, components, events};
+use std::time::Duration;
+
+use crate::game::{assets, events};
 use bevy::prelude::*;
 
 use super::ServerSets;
+use lib_spells::serialization;
 
+// todo: rewrite this shit
+// why are we even having auras as child entities? well you know why but
+// just use a hashmap to represent slots: Aura: HashMap<i8, Option<(AuraID, Timer)>>
+// use a trait like Aura { get_aura(slot), remove_aura(slot), tick_aura(slot) }
+// then write a proc macro to derive(aura) that implements the hashmap and functions
+// badabing badaboom
+// then you can write individual queries over all TickingHP auras and so on
+
+const TICK_RATE: Duration = Duration::from_millis(1000);
+
+/// The parent entity is shielded
+#[derive(Component)]
+pub struct ShieldAura(pub i64);
+
+impl ShieldAura {
+    pub fn new(base_multiplier: i64) -> Self {
+        Self(base_multiplier)
+    }
+}
+
+/// The parent entity is ticking health
+#[derive(Component)]
+pub struct TickingEffectAura(pub Timer);
+
+impl TickingEffectAura {
+    pub fn new() -> Self {
+        TickingEffectAura(Timer::new(TICK_RATE, TimerMode::Repeating))
+    }
+}
 /// Process an add aura event
 fn sys_add_aura_ev(
     mut ev_r: EventReader<events::AddAuraEvent>,
@@ -14,20 +46,21 @@ fn sys_add_aura_ev(
         if let Some(aura_data) = auras_asset.lookup(ev.aura_id) {
             // spawn base aura
             let base_entity = commands
-                .spawn((components::Aura {
+                .spawn(serialization::Aura {
                     id: ev.aura_id,
                     duration: Timer::new(aura_data.duration, TimerMode::Once),
-                },))
+                    owner: ev.target_entity,
+                })
                 .id();
 
             // add aura types
             match aura_data.status_type {
-                assets::AuraType::TickingHP => commands
+                serialization::AuraType::TickingHP => commands
                     .entity(base_entity)
-                    .insert(components::TickingEffectAura::new()),
-                assets::AuraType::Shield => commands
+                    .insert(TickingEffectAura::new()),
+                serialization::AuraType::Shield => commands
                     .entity(base_entity)
-                    .insert(components::ShieldAura::new(aura_data.base_multiplier)),
+                    .insert(ShieldAura::new(aura_data.base_multiplier)),
             };
 
             // parent
@@ -41,7 +74,7 @@ fn sys_remove_aura_ev(
     mut ev_r: EventReader<events::RemoveAuraEvent>,
     mut commands: Commands,
     child_query: Query<&Children>,
-    status_effect_query: Query<&components::Aura>,
+    status_effect_query: Query<&serialization::Aura>,
 ) {
     'event_processing: for ev in ev_r.read() {
         // find children of entity

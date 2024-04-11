@@ -33,7 +33,7 @@ impl ClientStream {
     pub(super) fn write_prefixed(&mut self, data: &[u8]) -> io::Result<usize> {
         let size_prefix: u32 = data.len() as u32;
         let header_written = self.stream.write(&size_prefix.to_le_bytes())?;
-        let data_written = self.stream.write(&data)?;
+        let data_written = self.stream.write(data)?;
         Ok(header_written + data_written)
     }
 

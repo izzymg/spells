@@ -7,12 +7,14 @@ fn sys_create_state() -> serialization::WorldState {
     serialization::WorldState::default()
 }
 
-fn sys_update_component_world_state<T: Component + Into<serialization::NeoState> + Copy + Clone>(
+fn sys_update_component_world_state<T: Component + Into<serialization::NeoState> + Clone>(
     In(mut world_state): In<serialization::WorldState>,
     query: Query<(Entity, &T)>,
 ) -> serialization::WorldState {
     query.iter().for_each(|(entity, comp)| {
-        world_state.update(entity.index(), (*comp).into());
+        // clone is here so components can have uncopyable types like "timer"
+        // however we should check performance of this and consider custom serialization of timer values if performance is bad
+        world_state.update(entity.index(), comp.clone().into());
     });
 
     world_state
@@ -67,10 +69,13 @@ impl Plugin for NetPlugin {
 
         app.add_systems(
             FixedLast,
-            sys_create_state.pipe(
-                sys_update_component_world_state::<serialization::Health>
-                    .pipe(sys_broadcast_state.map(dbg)),
-            ),
+            sys_create_state
+                .pipe(sys_update_component_world_state::<serialization::Health>)
+                .pipe(sys_update_component_world_state::<serialization::Aura>)
+                .pipe(sys_update_component_world_state::<serialization::SpellCaster>)
+                .pipe(sys_update_component_world_state::<serialization::CastingSpell>)
+                .pipe(sys_broadcast_state)
+                .map(dbg),
         );
     }
 }

@@ -3,14 +3,14 @@ use std::time::Instant;
 use bevy::{ecs::system::SystemParam, log, prelude::*};
 use lib_spells::serialization;
 
-use crate::game::{components, events};
+use crate::game::{effect_application, events};
 
 use super::ServerSets;
 
 #[derive(SystemParam)]
 struct ShieldQuery<'w, 's> {
     query_children: Query<'w, 's, &'static Children>,
-    query_shields: Query<'w, 's, &'static mut components::ShieldAura>,
+    query_shields: Query<'w, 's, &'static mut effect_application::ShieldAura>,
 }
 
 impl<'w, 's> ShieldQuery<'w, 's> {
@@ -145,7 +145,7 @@ mod tests {
     };
     use lib_spells::serialization;
 
-    use crate::game::{components, events};
+    use crate::game::{effect_application, events};
 
     use super::sys_process_damage_effects;
 
@@ -164,7 +164,7 @@ mod tests {
 
         let skele = app.world.spawn(serialization::Health(hp)).id();
         for shield in shields {
-            let child = app.world.spawn(components::ShieldAura(shield)).id();
+            let child = app.world.spawn(effect_application::ShieldAura(shield)).id();
             app.world.entity_mut(skele).add_child(child);
         }
 

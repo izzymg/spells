@@ -1,4 +1,3 @@
-use crate::game::components;
 use bevy::prelude::*;
 use lib_spells::serialization;
 
@@ -7,7 +6,7 @@ use super::ServerSets;
 /// Tick auras & remove expired
 fn sys_tick_clean_auras(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut components::Aura)>,
+    mut query: Query<(Entity, &mut serialization::Aura)>,
     time: Res<Time>,
 ) {
     for (entity, mut effect) in query.iter_mut() {

@@ -1,9 +1,13 @@
+/*!
+    Set of systems that can be run at startup for testing parts of the server in isolation.
+*/
+
 use std::time::Duration;
 
-use crate::game::{components, events};
+use crate::game::{effect_application, events};
 use bevy::{log, prelude::*};
 
-use super::components::{CastingSpell, SpellCaster};
+use super::events::AddAuraEvent;
 
 use lib_spells::serialization;
 
@@ -11,7 +15,23 @@ pub fn get_scene(name: &str) -> Option<fn(&mut World)> {
     match name {
         "effects" => Some(sys_many_effects),
         "spells" => Some(sys_spells),
+        "auras" => Some(sys_auras),
         _ => None,
+    }
+}
+
+pub fn sys_auras(world: &mut World) {
+    let entity_count = 1;
+    let aura_count: usize = 2; // must be <= number of auras that exist
+
+    for _ in 0..entity_count {
+        let entity = world.spawn(()).id();
+        for aura_id in 0..aura_count {
+            world.send_event(AddAuraEvent {
+                aura_id: aura_id.into(),
+                target_entity: entity,
+            });
+        }
     }
 }
 
@@ -33,7 +53,7 @@ pub fn sys_many_effects(world: &mut World) {
         let defender = world.spawn(serialization::Health(defender_hp)).id();
         defender_entities.push(defender);
         for _ in 0..n_shields {
-            let shield = world.spawn(components::ShieldAura(shield_val)).id();
+            let shield = world.spawn(effect_application::ShieldAura(shield_val)).id();
             world.entity_mut(defender).add_child(shield);
         }
     }
@@ -54,22 +74,22 @@ pub fn sys_many_effects(world: &mut World) {
 pub fn sys_spells(world: &mut World) {
     let skeleton = world.spawn(serialization::Health(25)).id();
     world.entity_mut(skeleton).insert((
-        SpellCaster,
-        CastingSpell::new(2.into(), skeleton, Duration::from_secs(1000)),
+        serialization::SpellCaster,
+        serialization::CastingSpell::new(2.into(), skeleton, Duration::from_secs(1000)),
     ));
-    let damagers = 30;
-    let healers = 30;
+    let damagers = 1;
+    let healers = 2;
 
     for _ in 0..damagers {
         world.spawn((
-            SpellCaster,
-            CastingSpell::new(0.into(), skeleton, Duration::from_secs(1000)),
+            serialization::SpellCaster,
+            serialization::CastingSpell::new(0.into(), skeleton, Duration::from_secs(1000)),
         ));
     }
     for _ in 0..healers {
         world.spawn((
-            SpellCaster,
-            CastingSpell::new(1.into(), skeleton, Duration::from_secs(1000)),
+            serialization::SpellCaster,
+            serialization::CastingSpell::new(1.into(), skeleton, Duration::from_secs(1000)),
         ));
     }
 }

@@ -1,45 +1,22 @@
 use bevy::ecs::system::Resource;
-use core::fmt;
 use std::time::Duration;
 
-use crate::game::{assets, components};
-
-/// We can use this to look up complex data about a spell.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SpellID(usize);
-
-impl SpellID {
-    pub fn get(self) -> usize {
-        self.0
-    }
-}
-
-impl From<usize> for SpellID {
-    fn from(value: usize) -> Self {
-        Self(value)
-    }
-}
-
-impl fmt::Display for SpellID {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(SPELL:{})", self.0)
-    }
-}
+use lib_spells::{alignment, serialization};
 
 /// Database of spells data by `SpellID`
 #[derive(Default, Debug)]
 pub struct SpellData {
     pub name: String,
     pub cast_time: Duration,
-    pub hostility: components::Hostility,
+    pub hostility: alignment::Hostility,
     pub target_health_effect: Option<i64>,
-    pub target_aura_effect: Option<assets::AuraID>,
+    pub target_aura_effect: Option<serialization::AuraID>,
 }
 
 impl SpellData {
     pub fn new(name: String, cast_ms: u64) -> Self {
         Self {
-            name: name,
+            name,
             cast_time: Duration::from_millis(cast_ms),
             ..Default::default()
         }
@@ -50,13 +27,13 @@ impl SpellData {
         self
     }
 
-    pub fn with_target_aura(mut self, aura: assets::AuraID) -> Self {
+    pub fn with_target_aura(mut self, aura: serialization::AuraID) -> Self {
         self.target_aura_effect = Some(aura);
         self
     }
 
     pub fn mark_friendly(mut self) -> Self {
-        self.hostility = components::Hostility::Friendly;
+        self.hostility = alignment::Hostility::Friendly;
         self
     }
 }
@@ -65,7 +42,7 @@ impl SpellData {
 pub struct SpellsAsset(pub Vec<SpellData>);
 
 impl SpellsAsset {
-    pub fn get_spell_data(&self, id: SpellID) -> Option<&SpellData> {
+    pub fn get_spell_data(&self, id: serialization::SpellID) -> Option<&SpellData> {
         self.0.get(id.get())
     }
 }

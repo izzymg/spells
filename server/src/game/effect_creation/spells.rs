@@ -1,36 +1,37 @@
 use bevy::{log, prelude::*};
+use lib_spells::{alignment, serialization};
 
-use crate::game::{assets, components, events};
+use crate::game::{assets, events};
 
 // Remove invalid targets on casts
 pub(super) fn sys_validate_cast_targets(
     mut query: Query<(
         Entity,
-        &mut components::CastingSpell,
-        Option<&components::FactionMember>,
+        &mut serialization::CastingSpell,
+        Option<&alignment::FactionMember>,
     )>,
     spell_list: Res<assets::SpellsAsset>,
-    faction_checker: components::FactionChecker,
+    faction_checker: alignment::FactionChecker,
     mut commands: Commands,
 ) {
     for (entity, casting, faction_member) in query.iter_mut() {
         let spell = spell_list.get_spell_data(casting.spell_id).unwrap();
         let is_selfcast = entity == casting.target;
         // allow self friendly
-        if is_selfcast && spell.hostility == components::Hostility::Friendly {
+        if is_selfcast && spell.hostility == alignment::Hostility::Friendly {
             continue;
         }
 
         // check factions (default is OK)
         let caster_faction = match faction_member {
             Some(member) => member.0,
-            None => components::Faction::default(),
+            None => alignment::Faction::default(),
         };
         let target_faction = faction_checker
             .get_entity_faction(casting.target)
             .unwrap_or_default();
         if !is_selfcast
-            && components::is_valid_target(spell.hostility, caster_faction, target_faction)
+            && alignment::is_valid_target(spell.hostility, caster_faction, target_faction)
         {
             continue;
         }
@@ -41,13 +42,15 @@ pub(super) fn sys_validate_cast_targets(
             casting.target,
             casting.spell_id
         );
-        commands.entity(entity).remove::<components::CastingSpell>();
+        commands
+            .entity(entity)
+            .remove::<serialization::CastingSpell>();
     }
 }
 
 /// Dispatch `SpellApplicationEvent` for finished casts
 pub(super) fn sys_dispatch_finished_casts(
-    query: Query<(Entity, &components::CastingSpell)>,
+    query: Query<(Entity, &serialization::CastingSpell)>,
     mut spell_app_ev_w: EventWriter<events::SpellApplicationEvent>,
 ) {
     let events: Vec<events::SpellApplicationEvent> = query
@@ -68,15 +71,17 @@ pub(super) fn sys_dispatch_finished_casts(
 
 pub(super) fn sys_remove_finished_casts(
     mut commands: Commands,
-    query: Query<(Entity, &components::CastingSpell)>,
+    query: Query<(Entity, &serialization::CastingSpell)>,
 ) {
     for (entity, _) in query.iter().filter(|(_, cast)| cast.cast_timer.finished()) {
-        commands.entity(entity).remove::<components::CastingSpell>();
+        commands
+            .entity(entity)
+            .remove::<serialization::CastingSpell>();
     }
 }
 
 // Tick spell casts
-pub(super) fn sys_tick_casts(time: Res<Time>, mut query: Query<&mut components::CastingSpell>) {
+pub(super) fn sys_tick_casts(time: Res<Time>, mut query: Query<&mut serialization::CastingSpell>) {
     for mut casting in query.iter_mut() {
         casting.cast_timer.tick(time.delta());
     }
@@ -104,13 +109,12 @@ pub(super) fn sys_spell_application_ev(
 
 #[cfg(test)]
 mod tests {
-    use crate::game::components::FactionMember;
-
-    use super::{assets, components, sys_validate_cast_targets};
+    use super::{assets, sys_validate_cast_targets};
     use bevy::{
         app::{self, Update},
         time::Timer,
     };
+    use lib_spells::{alignment, serialization};
 
     /// test spell target validation
     macro_rules! target_validation {
@@ -125,16 +129,16 @@ mod tests {
                     ],
                 });
                 app.add_systems(Update, sys_validate_cast_targets);
-                let target = app.world.spawn(FactionMember($c)).id();
+                let target = app.world.spawn(alignment::FactionMember($c)).id();
                 // caster
                 let caster = app
                     .world
                     .spawn((
-                        FactionMember($t),
-                        components::CastingSpell {
+                        alignment::FactionMember($t),
+                        serialization::CastingSpell {
                             cast_timer: Timer::from_seconds(1.0, bevy::time::TimerMode::Once),
                             spell_id: $s,
-                            target: target,
+                            target,
                         },
                     ))
                     .id();
@@ -142,7 +146,7 @@ mod tests {
                 // tick our validation system
                 app.update();
 
-                let still_casting = app.world.get::<components::CastingSpell>(caster);
+                let still_casting = app.world.get::<serialization::CastingSpell>(caster);
                 assert_eq!($e, still_casting.is_some());
             }
         };

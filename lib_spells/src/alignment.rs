@@ -3,16 +3,11 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 
 pub type Faction = u8;
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub enum Hostility {
+    #[default]
     Hostile,
     Friendly,
-}
-
-impl Default for Hostility {
-    fn default() -> Self {
-        Hostility::Hostile
-    }
 }
 
 #[derive(Component, Debug)]
