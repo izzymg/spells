@@ -1,68 +1,23 @@
 mod socket;
-use super::components::{self, Health};
 use bevy::{app, log, prelude::*, utils::dbg};
-use lib_spells::serialization::{self, EntityHealth};
-use std::{sync::mpsc, thread};
+use lib_spells::serialization;
+use std::sync::mpsc;
 
-impl From<&Health> for serialization::EntityState {
-    fn from(value: &Health) -> Self {
-        Self {
-            health: Some(EntityHealth { health: value.0 }),
-            ..Default::default()
-        }
-    }
+fn sys_create_state() -> serialization::WorldState {
+    serialization::WorldState::default()
 }
 
-fn sys_create_state(world: &mut World) -> serialization::WorldState {
-    let mut state: serialization::WorldState = default();
-    // health
-    world
-        .query::<(Entity, &components::Health)>()
-        .iter(world)
-        .for_each(|(entity, hp)| state.update(entity.index(), hp.into()));
+fn sys_update_component_world_state<T: Component + Into<serialization::NeoState> + Copy + Clone>(
+    In(mut world_state): In<serialization::WorldState>,
+    query: Query<(Entity, &T)>,
+) -> serialization::WorldState {
+    query.iter().for_each(|(entity, comp)| {
+        world_state.update(entity.index(), (*comp).into());
+    });
 
-    // spell casts
-    for (entity, cast) in world
-        .query::<(Entity, &components::CastingSpell)>()
-        .iter(world)
-    {
-        state.update(
-            entity.index(),
-            serialization::EntityState::default().with_casting_spell(
-                serialization::EntityCastingSpell {
-                    max_timer: cast.cast_timer.duration().as_millis() as u64,
-                    timer: cast.cast_timer.elapsed().as_millis() as u64,
-                    spell_id: cast.spell_id.get(),
-                },
-            ),
-        );
-    }
-
-    // casters
-    for (entity, _) in world
-        .query::<(Entity, &components::SpellCaster)>()
-        .iter(world)
-    {
-        state.update(
-            entity.index(),
-            serialization::EntityState::default()
-                .with_spell_caster(serialization::EntitySpellCaster),
-        );
-    }
-
-    // auras
-    for (parent, aura) in world.query::<(&Parent, &components::Aura)>().iter(world) {
-        state.update(
-            parent.get().index(),
-            serialization::EntityState::default().with_aura(serialization::EntityAura {
-                aura_id: aura.id.get(),
-                remaining: aura.get_remaining_time().as_millis() as u64,
-            }),
-        );
-    }
-
-    state
+    world_state
 }
+
 fn sys_broadcast_state(
     In(world_state): In<serialization::WorldState>,
     mut sender: ResMut<ClientStreamSender>,
@@ -100,15 +55,16 @@ impl Plugin for NetPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         let mut client_getter = socket::client_server::ClientServer::create().unwrap();
         let (tx, rx) = mpsc::channel();
+        client_getter.event_loop(rx);
 
-        thread::spawn(move || {
-            client_getter.event_loop(rx);
-        });
+        app.insert_resource(ClientStreamSender::new(tx));
 
-        app.insert_resource(ClientStreamSender::new(tx))
-            .add_systems(
-                FixedLast,
-                sys_create_state.pipe(sys_broadcast_state).map(dbg),
-            );
+        app.add_systems(
+            FixedLast,
+            sys_create_state.pipe(
+                sys_update_component_world_state::<serialization::Health>
+                    .pipe(sys_broadcast_state.map(dbg)),
+            ),
+        );
     }
 }
