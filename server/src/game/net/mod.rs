@@ -1,20 +1,25 @@
 mod socket;
-use super::components;
+use super::components::{self, Health};
 use bevy::{app, log, prelude::*, utils::dbg};
-use lib_spells::serialization;
+use lib_spells::serialization::{self, EntityHealth};
 use std::{sync::mpsc, thread};
+
+impl From<&Health> for serialization::EntityState {
+    fn from(value: &Health) -> Self {
+        Self {
+            health: Some(EntityHealth { health: value.0 }),
+            ..Default::default()
+        }
+    }
+}
 
 fn sys_create_state(world: &mut World) -> serialization::WorldState {
     let mut state: serialization::WorldState = default();
-
     // health
-    for (entity, hp) in world.query::<(Entity, &components::Health)>().iter(world) {
-        state.update(
-            entity.index(),
-            serialization::EntityState::default()
-                .with_health(serialization::EntityHealth { health: hp.0 }),
-        );
-    }
+    world
+        .query::<(Entity, &components::Health)>()
+        .iter(world)
+        .for_each(|(entity, hp)| state.update(entity.index(), hp.into()));
 
     // spell casts
     for (entity, cast) in world

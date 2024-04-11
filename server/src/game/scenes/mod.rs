@@ -53,7 +53,7 @@ pub fn sys_spells(world: &mut World) {
     let skeleton = world.spawn(Health(25)).id();
     world.entity_mut(skeleton).insert((
         SpellCaster,
-        CastingSpell::new(2.into(), skeleton, Duration::from_secs(10)),
+        CastingSpell::new(2.into(), skeleton, Duration::from_secs(1000)),
     ));
     let damagers = 30;
     let healers = 30;
@@ -61,13 +61,13 @@ pub fn sys_spells(world: &mut World) {
     for _ in 0..damagers {
         world.spawn((
             SpellCaster,
-            CastingSpell::new(0.into(), skeleton, Duration::from_secs(10)),
+            CastingSpell::new(0.into(), skeleton, Duration::from_secs(1000)),
         ));
     }
     for _ in 0..healers {
         world.spawn((
             SpellCaster,
-            CastingSpell::new(1.into(), skeleton, Duration::from_secs(10)),
+            CastingSpell::new(1.into(), skeleton, Duration::from_secs(1000)),
         ));
     }
 }

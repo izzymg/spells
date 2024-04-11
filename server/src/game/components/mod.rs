@@ -8,6 +8,14 @@ use std::time::Duration;
 
 const TICK_RATE: Duration = Duration::from_millis(1000);
 
+/// Entity has a position in the server world
+#[derive(Debug, Component, Default)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+
 /// Entity that can die
 #[derive(Debug, Component, Default)]
 pub struct Health(pub i64);

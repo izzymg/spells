@@ -24,25 +24,23 @@ pub(super) fn sys_add_casting_ui(
             }
         }
 
-        let spell_text = commands
-            .spawn((
-                widgets::title_text("BINGUS".into()),
-                CastingSpellText(caster_entity),
-            ))
-            .id();
+        commands.spawn((widgets::text("0".into()), CastingSpellText(caster_entity)));
         commands.entity(caster_entity);
         log::debug!("spawned text");
     }
 }
 
-/// Update casting spell text for casting parents.
+/// Update casting spell text for casting parents. Despawn text with invalid entities.
 pub(super) fn sys_render_casters_ui(
+    mut commands: Commands,
     casting_query: Query<&game::CastingSpell>,
-    mut text_query: Query<(&CastingSpellText, &mut Text)>,
+    mut text_query: Query<(Entity, &CastingSpellText, &mut Text)>,
 ) {
-    for (casting_text, mut text) in text_query.iter_mut() {
+    for (entity, casting_text, mut text) in text_query.iter_mut() {
         if let Ok(casting_spell) = casting_query.get(casting_text.0) {
             text.sections[0].value = casting_spell.timer.elapsed_secs().to_string();
+        } else {
+            commands.entity(entity).despawn_recursive();
         }
     }
 }
