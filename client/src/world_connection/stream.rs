@@ -8,7 +8,7 @@ use std::{
 use bevy::log;
 
 const PREFIX_BYTES: usize = 4;
-const MAX_MESSAGE_SIZE: u32 = 300;
+const MAX_MESSAGE_SIZE: u32 = 10 * 1000;
 
 #[derive(Debug, PartialEq)]
 pub enum ServerStreamError {
@@ -59,7 +59,7 @@ pub enum ServerStreamStatus {
 }
 
 impl Display for ServerStreamStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Handshaking => write!(f, "handshaking"),
             Self::Connected => write!(f, "connected"),

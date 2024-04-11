@@ -50,13 +50,13 @@ pub fn sys_many_effects(world: &mut World) {
 }
 
 pub fn sys_spells(world: &mut World) {
-    let skeleton = world.spawn(Health(150)).id();
+    let skeleton = world.spawn(Health(25)).id();
     world.entity_mut(skeleton).insert((
         SpellCaster,
         CastingSpell::new(2.into(), skeleton, Duration::from_secs(10)),
     ));
-    let damagers = 1;
-    let healers = 1;
+    let damagers = 30;
+    let healers = 30;
 
     for _ in 0..damagers {
         world.spawn((

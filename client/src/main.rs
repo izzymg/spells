@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         #[cfg(debug_assertions)]
         app.add_plugins(DefaultPlugins.set(LogPlugin {
             level: bevy::log::Level::DEBUG,
-            filter: "debug,wgpu_core=warn,wgpu_hal=warn,spells=debug".into(),
+            filter: "debug,wgpu_core=warn,wgpu_hal=warn,spells=info".into(),
             ..Default::default()
         }));
 

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::Duration};
 
-use bevy::{ecs::system::SystemParam, log, prelude::*};
+use bevy::{ecs::system::SystemParam, log, prelude::*, reflect::Map};
 use lib_spells::serialization;
 
 use crate::{world_connection, GameState, GameStates};
@@ -105,6 +105,7 @@ struct WorldStateSysParam<'w, 's> {
 
 impl<'w, 's> WorldStateSysParam<'w, 's> {
     // todo: probably just re-export EntityState from world_conn tbh
+    /// Replicate some `serialization::EntityState` onto the given `Entity`.
     fn push_entity_state(&mut self, entity: Entity, state: &serialization::EntityState) {
         if state.spell_caster.is_some() {
             self.commands.entity(entity).insert(SpellCaster);
@@ -132,7 +133,13 @@ impl<'w, 's> WorldStateSysParam<'w, 's> {
     fn spawn_gameobject(&mut self) -> Entity {
         self.commands.spawn(GameObject).id()
     }
+
+    fn despawn(&mut self, entity: Entity) {
+        self.commands.entity(entity).despawn_recursive();
+    }
 }
+
+/// Handle replication & syncing of world state to this game's world.
 fn sys_handle_world_state(
     mut sys_params: WorldStateSysParam,
     mut server_client_map: ResMut<ServerClientMap>,
@@ -145,13 +152,39 @@ fn sys_handle_world_state(
         log::debug!("game processing world state");
 
         if let Some(world_change) = &world_conn.state_change {
-            // we need to process change
+            for (server_entity, is_new_entity) in world_change.new_server_keys.iter().copied() {
+                let client_entity = if is_new_entity {
+                    sys_params.spawn_gameobject()
+                } else {
+                    *server_client_map
+                        .0
+                        .get(&server_entity)
+                        .expect("client server map should hold existing server entities")
+                };
+                sys_params.push_entity_state(
+                    client_entity,
+                    world_state
+                        .entity_state_map
+                        .get(&server_entity)
+                        .expect("any key in `new server keys` should be in `cached state`"),
+                );
+                log::debug!("updated entity {:?} with new state", client_entity);
+            }
+
+            for dead_entity in world_change.lost_server_keys.iter() {
+                let client_entity = server_client_map
+                    .0
+                    .remove(dead_entity)
+                    .expect("expected lost server key in client server map");
+                log::debug!("lost {:?}, despawned", client_entity);
+                sys_params.despawn(client_entity);
+            }
         } else {
             // we just want to spawn everything in here
             log::debug!("this is a first time world gen");
-            for (entity, state) in world_state.entity_state_map.iter() {
+            for (server_entity, state) in world_state.entity_state_map.iter() {
                 let new_entity = sys_params.spawn_gameobject();
-                server_client_map.0.insert(*entity, new_entity);
+                server_client_map.0.insert(*server_entity, new_entity);
                 sys_params.push_entity_state(new_entity, state);
                 log::debug!("spawned {:?} with state: {:?}", new_entity, state);
             }
@@ -159,6 +192,7 @@ fn sys_handle_world_state(
     }
 }
 
+/// Spawn in the basic game world objects when the game state changes.
 fn sys_spawn_game_world(
     mut commands: Commands,
     game_state: Res<GameState>,
