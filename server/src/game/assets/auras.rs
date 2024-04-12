@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use lib_spells::serialization;
+use lib_spells::shared;
 use std::time::Duration;
 
 /// Complex info about a status effect
@@ -7,7 +7,7 @@ pub struct AuraData {
     pub name: String,
     pub base_multiplier: i64,
     pub duration: Duration,
-    pub status_type: serialization::AuraType,
+    pub status_type: shared::AuraType,
 }
 
 impl AuraData {
@@ -15,7 +15,7 @@ impl AuraData {
         name: String,
         base_multiplier: i64,
         duration: Duration,
-        status_type: serialization::AuraType,
+        status_type: shared::AuraType,
     ) -> AuraData {
         AuraData {
             name,
@@ -31,7 +31,7 @@ impl AuraData {
 pub struct AurasAsset(pub Vec<AuraData>);
 
 impl AurasAsset {
-    pub fn lookup(&self, aura_id: serialization::AuraID) -> Option<&AuraData> {
+    pub fn lookup(&self, aura_id: shared::AuraID) -> Option<&AuraData> {
         self.0.get(aura_id.get())
     }
 }
@@ -42,13 +42,13 @@ pub(super) fn get_auras_resource() -> AurasAsset {
             "Immolated".into(),
             -5,
             Duration::from_secs(10),
-            serialization::AuraType::TickingHP,
+            shared::AuraType::TickingHP,
         ),
         AuraData::new(
             "Arcane Shield".into(),
             100,
             Duration::from_secs(7),
-            serialization::AuraType::Shield,
+            shared::AuraType::Shield,
         ),
     ])
 }

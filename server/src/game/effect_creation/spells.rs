@@ -1,5 +1,5 @@
 use bevy::{log, prelude::*};
-use lib_spells::{alignment, serialization};
+use lib_spells::{alignment, shared};
 
 use crate::game::{assets, events};
 
@@ -7,7 +7,7 @@ use crate::game::{assets, events};
 pub(super) fn sys_validate_cast_targets(
     mut query: Query<(
         Entity,
-        &mut serialization::CastingSpell,
+        &mut shared::CastingSpell,
         Option<&alignment::FactionMember>,
     )>,
     spell_list: Res<assets::SpellsAsset>,
@@ -44,13 +44,13 @@ pub(super) fn sys_validate_cast_targets(
         );
         commands
             .entity(entity)
-            .remove::<serialization::CastingSpell>();
+            .remove::<shared::CastingSpell>();
     }
 }
 
 /// Dispatch `SpellApplicationEvent` for finished casts
 pub(super) fn sys_dispatch_finished_casts(
-    query: Query<(Entity, &serialization::CastingSpell)>,
+    query: Query<(Entity, &shared::CastingSpell)>,
     mut spell_app_ev_w: EventWriter<events::SpellApplicationEvent>,
 ) {
     let events: Vec<events::SpellApplicationEvent> = query
@@ -71,17 +71,17 @@ pub(super) fn sys_dispatch_finished_casts(
 
 pub(super) fn sys_remove_finished_casts(
     mut commands: Commands,
-    query: Query<(Entity, &serialization::CastingSpell)>,
+    query: Query<(Entity, &shared::CastingSpell)>,
 ) {
     for (entity, _) in query.iter().filter(|(_, cast)| cast.cast_timer.finished()) {
         commands
             .entity(entity)
-            .remove::<serialization::CastingSpell>();
+            .remove::<shared::CastingSpell>();
     }
 }
 
 // Tick spell casts
-pub(super) fn sys_tick_casts(time: Res<Time>, mut query: Query<&mut serialization::CastingSpell>) {
+pub(super) fn sys_tick_casts(time: Res<Time>, mut query: Query<&mut shared::CastingSpell>) {
     for mut casting in query.iter_mut() {
         casting.cast_timer.tick(time.delta());
     }
@@ -114,7 +114,7 @@ mod tests {
         app::{self, Update},
         time::Timer,
     };
-    use lib_spells::{alignment, serialization};
+    use lib_spells::{alignment, shared};
 
     /// test spell target validation
     macro_rules! target_validation {
@@ -135,7 +135,7 @@ mod tests {
                     .world
                     .spawn((
                         alignment::FactionMember($t),
-                        serialization::CastingSpell {
+                        shared::CastingSpell {
                             cast_timer: Timer::from_seconds(1.0, bevy::time::TimerMode::Once),
                             spell_id: $s,
                             target,
@@ -146,7 +146,7 @@ mod tests {
                 // tick our validation system
                 app.update();
 
-                let still_casting = app.world.get::<serialization::CastingSpell>(caster);
+                let still_casting = app.world.get::<shared::CastingSpell>(caster);
                 assert_eq!($e, still_casting.is_some());
             }
         };

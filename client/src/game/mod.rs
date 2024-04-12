@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use bevy::{ecs::system::SystemParam, log, prelude::*, reflect::Map};
-use lib_spells::serialization;
+use lib_spells::shared;
 
 use crate::{world_connection, GameState, GameStates};
 
@@ -106,7 +106,7 @@ struct WorldStateSysParam<'w, 's> {
 impl<'w, 's> WorldStateSysParam<'w, 's> {
     // todo: probably just re-export EntityState from world_conn tbh
     /// Replicate some `serialization::EntityState` onto the given `Entity`.
-    fn push_entity_state(&mut self, entity: Entity, state: &serialization::EntityState) {
+    fn push_entity_state(&mut self, entity: Entity, state: &shared::EntityState) {
         if state.spell_caster.is_some() {
             self.commands.entity(entity).insert(SpellCaster);
         }

@@ -9,7 +9,7 @@ use bevy::{log, prelude::*};
 
 use super::events::AddAuraEvent;
 
-use lib_spells::serialization;
+use lib_spells::shared;
 
 pub fn get_scene(name: &str) -> Option<fn(&mut World)> {
     match name {
@@ -50,7 +50,7 @@ pub fn sys_many_effects(world: &mut World) {
 
     let mut defender_entities = vec![];
     for _ in 0..n_defenders {
-        let defender = world.spawn(serialization::Health(defender_hp)).id();
+        let defender = world.spawn(shared::Health(defender_hp)).id();
         defender_entities.push(defender);
         for _ in 0..n_shields {
             let shield = world.spawn(effect_application::ShieldAura(shield_val)).id();
@@ -72,24 +72,24 @@ pub fn sys_many_effects(world: &mut World) {
 }
 
 pub fn sys_spells(world: &mut World) {
-    let skeleton = world.spawn(serialization::Health(25)).id();
+    let skeleton = world.spawn(shared::Health(25)).id();
     world.entity_mut(skeleton).insert((
-        serialization::SpellCaster,
-        serialization::CastingSpell::new(2.into(), skeleton, Duration::from_secs(1000)),
+        shared::SpellCaster,
+        shared::CastingSpell::new(2.into(), skeleton, Duration::from_secs(1000)),
     ));
     let damagers = 1;
     let healers = 2;
 
     for _ in 0..damagers {
         world.spawn((
-            serialization::SpellCaster,
-            serialization::CastingSpell::new(0.into(), skeleton, Duration::from_secs(1000)),
+            shared::SpellCaster,
+            shared::CastingSpell::new(0.into(), skeleton, Duration::from_secs(1000)),
         ));
     }
     for _ in 0..healers {
         world.spawn((
-            serialization::SpellCaster,
-            serialization::CastingSpell::new(1.into(), skeleton, Duration::from_secs(1000)),
+            shared::SpellCaster,
+            shared::CastingSpell::new(1.into(), skeleton, Duration::from_secs(1000)),
         ));
     }
 }

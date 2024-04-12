@@ -1,7 +1,7 @@
 // Aura systems that cause an effect event
 
 use bevy::prelude::*;
-use lib_spells::serialization;
+use lib_spells::shared;
 
 use crate::game::{
     assets, effect_application,
@@ -24,7 +24,7 @@ pub(super) fn sys_apply_aura_tick(
     mut effect_ev_w: ResMut<Events<events::EffectQueueEvent>>,
     ticking_query: Query<(
         &Parent,
-        &serialization::Aura,
+        &shared::Aura,
         &effect_application::TickingEffectAura,
     )>,
 ) {

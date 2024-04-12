@@ -3,7 +3,7 @@ pub const SERVER_HEADER: &str = "SPELLSERVER 0.1\n";
 
 pub mod alignment;
 
-pub mod serialization {
+pub mod shared {
     use core::fmt;
     use std::{collections::HashMap, time::Duration};
 

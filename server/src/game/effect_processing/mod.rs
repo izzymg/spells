@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use bevy::{ecs::system::SystemParam, log, prelude::*};
-use lib_spells::serialization;
+use lib_spells::shared;
 
 use crate::game::{effect_application, events};
 
@@ -41,7 +41,7 @@ impl<'w, 's> ShieldQuery<'w, 's> {
 
 #[derive(SystemParam)]
 struct HealthQuery<'w, 's> {
-    query_health: Query<'w, 's, &'static mut serialization::Health>,
+    query_health: Query<'w, 's, &'static mut shared::Health>,
 }
 
 impl<'w, 's> HealthQuery<'w, 's> {
@@ -143,7 +143,7 @@ mod tests {
         ecs::event::Events,
         hierarchy::BuildWorldChildren,
     };
-    use lib_spells::serialization;
+    use lib_spells::shared;
 
     use crate::game::{effect_application, events};
 
@@ -162,7 +162,7 @@ mod tests {
         app.init_resource::<Events<events::EffectQueueEvent>>();
         app.add_systems(Update, sys_process_damage_effects);
 
-        let skele = app.world.spawn(serialization::Health(hp)).id();
+        let skele = app.world.spawn(shared::Health(hp)).id();
         for shield in shields {
             let child = app.world.spawn(effect_application::ShieldAura(shield)).id();
             app.world.entity_mut(skele).add_child(child);
@@ -180,7 +180,7 @@ mod tests {
         }
         app.update();
 
-        let remaining_hp = app.world.get::<serialization::Health>(skele).unwrap().0;
+        let remaining_hp = app.world.get::<shared::Health>(skele).unwrap().0;
         assert_eq!(remaining_hp, expect_hp);
     }
 }

@@ -4,7 +4,7 @@ use crate::game::{assets, events};
 use bevy::prelude::*;
 
 use super::ServerSets;
-use lib_spells::serialization;
+use lib_spells::shared;
 
 // todo: rewrite this shit
 // why are we even having auras as child entities? well you know why but
@@ -46,7 +46,7 @@ fn sys_add_aura_ev(
         if let Some(aura_data) = auras_asset.lookup(ev.aura_id) {
             // spawn base aura
             let base_entity = commands
-                .spawn(serialization::Aura {
+                .spawn(shared::Aura {
                     id: ev.aura_id,
                     duration: Timer::new(aura_data.duration, TimerMode::Once),
                     owner: ev.target_entity,
@@ -55,10 +55,10 @@ fn sys_add_aura_ev(
 
             // add aura types
             match aura_data.status_type {
-                serialization::AuraType::TickingHP => commands
+                shared::AuraType::TickingHP => commands
                     .entity(base_entity)
                     .insert(TickingEffectAura::new()),
-                serialization::AuraType::Shield => commands
+                shared::AuraType::Shield => commands
                     .entity(base_entity)
                     .insert(ShieldAura::new(aura_data.base_multiplier)),
             };
@@ -74,7 +74,7 @@ fn sys_remove_aura_ev(
     mut ev_r: EventReader<events::RemoveAuraEvent>,
     mut commands: Commands,
     child_query: Query<&Children>,
-    status_effect_query: Query<&serialization::Aura>,
+    status_effect_query: Query<&shared::Aura>,
 ) {
     'event_processing: for ev in ev_r.read() {
         // find children of entity

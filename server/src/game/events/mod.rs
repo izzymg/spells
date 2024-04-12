@@ -1,13 +1,13 @@
 /// general game events
 use bevy::prelude::*;
 
-use lib_spells::serialization;
+use lib_spells::shared;
 /// Queue an effect onto the target
 #[derive(Event, Debug, Copy, Clone)]
 pub struct EffectQueueEvent {
     pub target: Entity,
     pub health_effect: Option<i64>,
-    pub aura_effect: Option<serialization::AuraID>,
+    pub aura_effect: Option<shared::AuraID>,
 }
 
 /// `spell_id` should be applied to `target`
@@ -15,20 +15,20 @@ pub struct EffectQueueEvent {
 pub struct SpellApplicationEvent {
     pub origin: Entity,
     pub target: Entity,
-    pub spell_id: serialization::SpellID,
+    pub spell_id: shared::SpellID,
 }
 
 /// Request to add an aura child to the given entity
 #[derive(Event, Debug)]
 pub struct AddAuraEvent {
-    pub aura_id: serialization::AuraID,
+    pub aura_id: shared::AuraID,
     pub target_entity: Entity,
 }
 
 /// Request to drop an aura child from the given entity
 #[derive(Event, Debug)]
 pub struct RemoveAuraEvent {
-    pub aura_id: serialization::AuraID,
+    pub aura_id: shared::AuraID,
     pub target_entity: Entity,
 }
 

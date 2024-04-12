@@ -1,7 +1,7 @@
 use bevy::ecs::system::Resource;
 use std::time::Duration;
 
-use lib_spells::{alignment, serialization};
+use lib_spells::{alignment, shared};
 
 /// Database of spells data by `SpellID`
 #[derive(Default, Debug)]
@@ -10,7 +10,7 @@ pub struct SpellData {
     pub cast_time: Duration,
     pub hostility: alignment::Hostility,
     pub target_health_effect: Option<i64>,
-    pub target_aura_effect: Option<serialization::AuraID>,
+    pub target_aura_effect: Option<shared::AuraID>,
 }
 
 impl SpellData {
@@ -27,7 +27,7 @@ impl SpellData {
         self
     }
 
-    pub fn with_target_aura(mut self, aura: serialization::AuraID) -> Self {
+    pub fn with_target_aura(mut self, aura: shared::AuraID) -> Self {
         self.target_aura_effect = Some(aura);
         self
     }
@@ -42,7 +42,7 @@ impl SpellData {
 pub struct SpellsAsset(pub Vec<SpellData>);
 
 impl SpellsAsset {
-    pub fn get_spell_data(&self, id: serialization::SpellID) -> Option<&SpellData> {
+    pub fn get_spell_data(&self, id: shared::SpellID) -> Option<&SpellData> {
         self.0.get(id.get())
     }
 }
