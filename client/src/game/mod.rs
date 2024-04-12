@@ -1,7 +1,7 @@
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use bevy::{ecs::system::SystemParam, log, prelude::*, reflect::Map};
-use lib_spells::shared;
+use lib_spells::net;
 
 use crate::{world_connection, GameState, GameStates};
 
@@ -24,27 +24,6 @@ struct GameCameraBundle {
     go: GameObject,
     cam: Camera3dBundle,
 }
-
-#[derive(Bundle, Default)]
-struct MeshMatGameObjectBundle {
-    go: GameObject,
-    cube: PbrBundle,
-}
-
-impl MeshMatGameObjectBundle {
-    fn new(mesh: Handle<Mesh>, material: Handle<StandardMaterial>) -> Self {
-        Self {
-            go: GameObject,
-            cube: PbrBundle {
-                mesh,
-                material,
-                transform: Transform::from_xyz(0.0, 0.5, 1.0),
-                ..Default::default()
-            },
-        }
-    }
-}
-
 impl GameCameraBundle {
     fn new() -> Self {
         Self {
@@ -54,33 +33,6 @@ impl GameCameraBundle {
                 ..Default::default()
             },
         }
-    }
-}
-
-/// Cast timer for a spell
-#[derive(Component)]
-pub struct CastingSpell {
-    pub spell_id: usize,
-    pub timer: Timer,
-}
-
-/// This entity is ALIVE
-#[derive(Component, Debug)]
-pub struct Health(pub i64);
-
-/// List of aura IDs
-#[derive(Component, Debug)]
-pub struct Auras(pub Vec<usize>);
-
-/// Marker
-#[derive(Component)]
-pub struct SpellCaster;
-
-impl CastingSpell {
-    fn new(spell_id: usize, current_ms: u64, max_ms: u64) -> Self {
-        let mut timer = Timer::new(Duration::from_millis(max_ms), TimerMode::Once);
-        timer.set_elapsed(Duration::from_millis(current_ms));
-        Self { spell_id, timer }
     }
 }
 
@@ -100,34 +52,22 @@ fn sys_handle_world_messages(
 #[derive(SystemParam)]
 struct WorldStateSysParam<'w, 's> {
     commands: Commands<'w, 's>,
-    query_auras: Query<'w, 's, &'static mut Auras>,
 }
 
 impl<'w, 's> WorldStateSysParam<'w, 's> {
+    fn push_state(&mut self, entity: Entity, state: &Option<impl Component + Clone>) {
+        if let Some(s) = state {
+            self.commands.entity(entity).insert(s.clone());
+        }
+    }
+
     // todo: probably just re-export EntityState from world_conn tbh
     /// Replicate some `serialization::EntityState` onto the given `Entity`.
-    fn push_entity_state(&mut self, entity: Entity, state: &shared::EntityState) {
-        if state.spell_caster.is_some() {
-            self.commands.entity(entity).insert(SpellCaster);
-        }
-        if let Some(casting) = state.casting_spell {
-            self.commands.entity(entity).insert(CastingSpell::new(
-                casting.spell_id,
-                casting.timer,
-                casting.max_timer,
-            ));
-        }
-
-        if let Some(health) = state.health {
-            self.commands.entity(entity).insert(Health(health.health));
-        }
-
-        for aura in state.auras.iter() {
-            if let Ok(mut entity_auras) = self.query_auras.get_mut(entity) {
-                // already have some to add to
-                entity_auras.0.push(aura.aura_id);
-            }
-        }
+    fn push_entity_state(&mut self, entity: Entity, state: &net::EntityState) {
+        self.push_state(entity, &state.aura);
+        self.push_state(entity, &state.health);
+        self.push_state(entity, &state.spellcaster);
+        self.push_state(entity, &state.casting_spell);
     }
 
     fn spawn_gameobject(&mut self) -> Entity {
