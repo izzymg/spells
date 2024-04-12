@@ -15,7 +15,7 @@ macro_rules! gen_state {
             /// State for an entity we care to replicate
             #[derive(Default, Debug, Clone, Serialize, Deserialize)]
             pub struct EntityState {
-                $ ( $field: Option<$t> ),*
+                $ ( pub $field: Option<$t> ),*
             }
             impl EntityState {
                 /// Merges this state with `other`, prioritising `Some` values on `other`

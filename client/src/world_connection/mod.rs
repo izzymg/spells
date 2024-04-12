@@ -3,7 +3,7 @@ mod stream;
 pub use stream::ServerStreamStatus;
 
 use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
-use lib_spells::shared;
+use lib_spells::net;
 
 use std::{fmt::Display, sync::mpsc};
 
@@ -58,7 +58,7 @@ pub struct WorldStateChange {
 #[derive(Debug, Resource)]
 pub struct WorldConnection {
     pub connect_system: SystemId<String>,
-    pub cached_state: Option<shared::WorldState>,
+    pub cached_state: Option<net::WorldState>,
     pub state_change: Option<WorldStateChange>,
     pub message: Option<WorldConnectionMessage>,
 }
@@ -89,7 +89,7 @@ fn sys_check_receiver(recv: NonSend<ThreadReceiver>, mut conn: ResMut<WorldConne
                     conn.message = Some(WorldConnectionMessage::Status(msg));
                 }
                 ServerStreamMessage::Data(data) => {
-                    let new_state = shared::WorldState::deserialize(&data)
+                    let new_state = net::WorldState::deserialize(&data)
                         .expect("deserialization shouldn't fail");
                     // if we never had state set new state
                     if conn.cached_state.is_none() {
