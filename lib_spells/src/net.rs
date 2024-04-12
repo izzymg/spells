@@ -14,10 +14,10 @@ macro_rules! gen_state {
         ( $($t:ty, $field:ident),* ) => {
             /// State for an entity we care to replicate
             #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-            pub struct NeoState {
+            pub struct EntityState {
                 $ ( $field: Option<$t> ),*
             }
-            impl NeoState {
+            impl EntityState {
                 /// Merges this state with `other`, prioritising `Some` values on `other`
                 pub fn update(mut self, other: Self) -> Self {
                     $( self.$field = other.$field.or(self.$field);  )*
@@ -25,7 +25,7 @@ macro_rules! gen_state {
                 }
             }
             $ (
-            impl From<$t> for NeoState {
+            impl From<$t> for EntityState {
                 fn from(value: $t) -> Self {
                     Self {
                         $field: Some(value),
@@ -51,7 +51,7 @@ gen_state!(
 /// Maps a set of entities to their component state for network magic.
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct WorldState {
-    pub entity_state_map: HashMap<u32, NeoState>,
+    pub entity_state_map: HashMap<u32, EntityState>,
 }
 
 impl WorldState {
@@ -70,7 +70,7 @@ impl WorldState {
     }
 
     /// Push `new_state` into the map, calling `update` on the existing state if it exists
-    pub fn update(&mut self, key: u32, new_state: NeoState) {
+    pub fn update(&mut self, key: u32, new_state: EntityState) {
         if let Some(existing) = self.entity_state_map.get(&key) {
             let existing = existing.clone().update(new_state);
             self.entity_state_map.insert(key, existing);

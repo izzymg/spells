@@ -7,7 +7,7 @@ fn sys_create_state() -> net::WorldState {
     net::WorldState::default()
 }
 
-fn sys_update_component_world_state<T: Component + Into<net::NeoState> + Clone>(
+fn sys_update_component_world_state<T: Component + Into<net::EntityState> + Clone>(
     In(mut world_state): In<net::WorldState>,
     query: Query<(Entity, &T)>,
 ) -> net::WorldState {
