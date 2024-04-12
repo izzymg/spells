@@ -1,16 +1,16 @@
 mod socket;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool, utils::dbg};
-use lib_spells::shared;
+use lib_spells::{shared, net};
 use std::sync::mpsc;
 
-fn sys_create_state() -> shared::WorldState {
-    shared::WorldState::default()
+fn sys_create_state() -> net::WorldState {
+    net::WorldState::default()
 }
 
-fn sys_update_component_world_state<T: Component + Into<shared::NeoState> + Clone>(
-    In(mut world_state): In<shared::WorldState>,
+fn sys_update_component_world_state<T: Component + Into<net::NeoState> + Clone>(
+    In(mut world_state): In<net::WorldState>,
     query: Query<(Entity, &T)>,
-) -> shared::WorldState {
+) -> net::WorldState {
     query.iter().for_each(|(entity, comp)| {
         // clone is here so components can have uncopyable types like "timer"
         // however we should check performance of this and consider custom serialization of timer values if performance is bad
@@ -21,10 +21,10 @@ fn sys_update_component_world_state<T: Component + Into<shared::NeoState> + Clon
 }
 
 fn sys_broadcast_state(
-    In(world_state): In<shared::WorldState>,
+    In(world_state): In<net::WorldState>,
     mut sender: ResMut<ClientStreamSender>,
     mut exit_events: ResMut<Events<app::AppExit>>,
-) -> shared::WorldState {
+) -> net::WorldState {
     if !sender.send_data(
         world_state
             .serialize()
