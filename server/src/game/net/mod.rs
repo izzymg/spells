@@ -1,6 +1,6 @@
 mod socket;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool, utils::dbg};
-use lib_spells::{shared, net};
+use lib_spells::{net, shared};
 use std::sync::mpsc;
 
 fn sys_create_state() -> net::WorldState {
@@ -14,7 +14,7 @@ fn sys_update_component_world_state<T: Component + Into<net::EntityState> + Clon
     query.iter().for_each(|(entity, comp)| {
         // clone is here so components can have uncopyable types like "timer"
         // however we should check performance of this and consider custom serialization of timer values if performance is bad
-        world_state.update(entity.index(), comp.clone().into());
+        world_state.update(entity, comp.clone().into());
     });
 
     world_state

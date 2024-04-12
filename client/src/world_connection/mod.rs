@@ -51,8 +51,8 @@ struct ThreadHandle {
 #[derive(Debug, Resource, Default)]
 pub struct WorldStateChange {
     /// If true, this server entity is new.
-    pub new_server_keys: Vec<(u32, bool)>,
-    pub lost_server_keys: Vec<u32>,
+    pub new_server_keys: Vec<(Entity, bool)>,
+    pub lost_server_keys: Vec<Entity>,
 }
 
 #[derive(Debug, Resource)]

@@ -51,7 +51,7 @@ gen_state!(
 /// Maps a set of entities to their component state for network magic.
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct WorldState {
-    pub entity_state_map: HashMap<u32, EntityState>,
+    pub entity_state_map: HashMap<Entity, EntityState>,
 }
 
 impl WorldState {
@@ -70,7 +70,7 @@ impl WorldState {
     }
 
     /// Push `new_state` into the map, calling `update` on the existing state if it exists
-    pub fn update(&mut self, key: u32, new_state: EntityState) {
+    pub fn update(&mut self, key: Entity, new_state: EntityState) {
         if let Some(existing) = self.entity_state_map.get(&key) {
             let existing = existing.clone().update(new_state);
             self.entity_state_map.insert(key, existing);

@@ -1,6 +1,8 @@
-use std::collections::HashMap;
-
-use bevy::{ecs::system::SystemParam, log, prelude::*, reflect::Map};
+use bevy::{
+    ecs::{entity::EntityHashMap, system::SystemParam},
+    log,
+    prelude::*,
+};
 use lib_spells::net;
 
 use crate::{world_connection, GameState, GameStates};
@@ -13,7 +15,7 @@ use crate::{world_connection, GameState, GameStates};
 
 /// Maps server entities to our entities
 #[derive(Resource, Debug, Default)]
-struct ServerClientMap(HashMap<u32, Entity>);
+struct ServerClientMap(EntityHashMap<Entity>);
 
 /// Marker
 #[derive(Component, Debug, Default)]
