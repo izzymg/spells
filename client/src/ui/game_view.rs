@@ -1,4 +1,3 @@
-use crate::game;
 use bevy::{log, prelude::*};
 
 use super::widgets;

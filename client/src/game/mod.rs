@@ -1,21 +1,28 @@
+/*!
+    WE LOVE CASTING SPELLS
+*/
+
 use bevy::{
-    ecs::{entity::EntityHashMap, system::SystemParam},
+    ecs::{
+        entity::{EntityHashMap, MapEntities},
+        system::SystemParam,
+    },
     log,
     prelude::*,
 };
 use lib_spells::net;
 
 use crate::{world_connection, GameState, GameStates};
-
-//// 00000000000000000000000000000000000000000
-//// 00000000000000000000000000000000000000000
-//// 0000 WE LOVE CASTING SPELLS AND SHIT 0000
-//// 00000000000000000000000000000000000000000
-//// 00000000000000000000000000000000000000000
-
 /// Maps server entities to our entities
 #[derive(Resource, Debug, Default)]
-struct ServerClientMap(EntityHashMap<Entity>);
+struct WorldLocalEntityMap(EntityHashMap<Entity>);
+
+impl EntityMapper for WorldLocalEntityMap {
+    fn map_entity(&mut self, entity: Entity) -> Entity {
+        // todo: this could crash
+        self.0.get(&entity).copied().unwrap()
+    }
+}
 
 /// Marker
 #[derive(Component, Debug, Default)]
@@ -54,37 +61,66 @@ fn sys_handle_world_messages(
 #[derive(SystemParam)]
 struct WorldStateSysParam<'w, 's> {
     commands: Commands<'w, 's>,
+    mapper: ResMut<'w, WorldLocalEntityMap>,
 }
 
 impl<'w, 's> WorldStateSysParam<'w, 's> {
-    fn push_state(&mut self, entity: Entity, state: &Option<impl Component + Clone>) {
+    fn push_state(
+        &mut self,
+        entity: Entity,
+        state: &Option<impl Component + Clone + core::fmt::Debug>,
+    ) {
         if let Some(s) = state {
             self.commands.entity(entity).insert(s.clone());
+            log::debug!("added {:?} to {:?}", s, entity);
         }
     }
 
-    // todo: probably just re-export EntityState from world_conn tbh
     /// Replicate some `serialization::EntityState` onto the given `Entity`.
-    fn push_entity_state(&mut self, entity: Entity, state: &net::EntityState) {
-        self.push_state(entity, &state.aura);
+    fn push_entity_state(&mut self, world_entity: Entity, state: &net::EntityState) {
+        log::debug!("pushing state to server entity {:?}", world_entity);
+        let entity = *self
+            .mapper
+            .0
+            .get(&world_entity)
+            .expect("client entity should be mapped");
+        if let Some(aura) = &state.aura {
+            let mut aura = aura.clone();
+            aura.map_entities::<WorldLocalEntityMap>(&mut self.mapper);
+            log::debug!("added {:?} to {:?}", aura, entity);
+            self.commands.entity(entity).insert(aura.clone());
+        }
+
         self.push_state(entity, &state.health);
         self.push_state(entity, &state.spellcaster);
         self.push_state(entity, &state.casting_spell);
     }
 
-    fn spawn_gameobject(&mut self) -> Entity {
-        self.commands.spawn(GameObject).id()
+    fn spawn_gameobject(&mut self, server_entity: Entity) -> Entity {
+        let entity = self.commands.spawn(GameObject).id();
+        self.mapper.0.insert(server_entity, entity);
+        log::debug!(
+            "replicated server entity {:?} -> {:?}",
+            server_entity,
+            entity
+        );
+        entity
     }
 
-    fn despawn(&mut self, entity: Entity) {
+    fn despawn(&mut self, server_entity: Entity) {
+        let entity = self
+            .mapper
+            .0
+            .remove(&server_entity)
+            .expect("client entity should be mapped");
         self.commands.entity(entity).despawn_recursive();
+        log::debug!("despawned server entity {:?}", entity);
     }
 }
 
 /// Handle replication & syncing of world state to this game's world.
 fn sys_handle_world_state(
     mut sys_params: WorldStateSysParam,
-    mut server_client_map: ResMut<ServerClientMap>,
     world_conn: Res<world_connection::WorldConnection>,
 ) {
     if !world_conn.is_changed() {
@@ -95,40 +131,27 @@ fn sys_handle_world_state(
 
         if let Some(world_change) = &world_conn.state_change {
             for (server_entity, is_new_entity) in world_change.new_server_keys.iter().copied() {
-                let client_entity = if is_new_entity {
-                    sys_params.spawn_gameobject()
-                } else {
-                    *server_client_map
-                        .0
-                        .get(&server_entity)
-                        .expect("client server map should hold existing server entities")
-                };
+                if is_new_entity {
+                    sys_params.spawn_gameobject(server_entity);
+                }
                 sys_params.push_entity_state(
-                    client_entity,
+                    server_entity,
                     world_state
                         .entity_state_map
                         .get(&server_entity)
                         .expect("any key in `new server keys` should be in `cached state`"),
                 );
-                log::debug!("updated entity {:?} with new state", client_entity);
             }
 
-            for dead_entity in world_change.lost_server_keys.iter() {
-                let client_entity = server_client_map
-                    .0
-                    .remove(dead_entity)
-                    .expect("expected lost server key in client server map");
-                log::debug!("lost {:?}, despawned", client_entity);
-                sys_params.despawn(client_entity);
+            for dead_entity in world_change.lost_server_keys.iter().copied() {
+                sys_params.despawn(dead_entity);
             }
         } else {
             // we just want to spawn everything in here
             log::debug!("this is a first time world gen");
             for (server_entity, state) in world_state.entity_state_map.iter() {
-                let new_entity = sys_params.spawn_gameobject();
-                server_client_map.0.insert(*server_entity, new_entity);
-                sys_params.push_entity_state(new_entity, state);
-                log::debug!("spawned {:?} with state: {:?}", new_entity, state);
+                sys_params.spawn_gameobject(*server_entity);
+                sys_params.push_entity_state(*server_entity, state);
             }
         }
     }
@@ -138,7 +161,7 @@ fn sys_handle_world_state(
 fn sys_spawn_game_world(
     mut commands: Commands,
     game_state: Res<GameState>,
-    mut server_client_map: ResMut<ServerClientMap>,
+    mut server_client_map: ResMut<WorldLocalEntityMap>,
 ) {
     if !(game_state.is_changed() && game_state.0 == GameStates::Game) {
         return;
@@ -152,7 +175,7 @@ fn sys_cleanup_game_world(
     mut commands: Commands,
     game_state: Res<GameState>,
     go_query: Query<Entity, With<GameObject>>,
-    mut server_client_map: ResMut<ServerClientMap>,
+    mut server_client_map: ResMut<WorldLocalEntityMap>,
 ) {
     if !(game_state.is_changed() && game_state.0 != GameStates::Game) {
         return;
@@ -167,7 +190,7 @@ fn sys_cleanup_game_world(
 pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ServerClientMap::default());
+        app.insert_resource(WorldLocalEntityMap::default());
         app.add_systems(
             Update,
             (

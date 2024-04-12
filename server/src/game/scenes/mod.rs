@@ -20,21 +20,6 @@ pub fn get_scene(name: &str) -> Option<fn(&mut World)> {
     }
 }
 
-pub fn sys_auras(world: &mut World) {
-    let entity_count = 1;
-    let aura_count: usize = 2; // must be <= number of auras that exist
-
-    for _ in 0..entity_count {
-        let entity = world.spawn(()).id();
-        for aura_id in 0..aura_count {
-            world.send_event(AddAuraEvent {
-                aura_id: aura_id.into(),
-                target_entity: entity,
-            });
-        }
-    }
-}
-
 pub fn sys_many_effects(world: &mut World) {
     let n_defenders = 50;
     let n_shields = 50;
@@ -92,4 +77,18 @@ pub fn sys_spells(world: &mut World) {
             shared::CastingSpell::new(1.into(), skeleton, Duration::from_secs(1000)),
         ));
     }
+}
+
+pub fn sys_auras(world: &mut World) {
+    let target = world.spawn(shared::SpellCaster).id();
+    let aura = world
+        .spawn(shared::Aura {
+            id: 0.into(),
+            duration: Timer::from_seconds(5.0, TimerMode::Once),
+            owner: target,
+        })
+        .id();
+
+    log::info!("aura TARGET: {:?}", target);
+    log::info!("aura ENTITY: {:?}", aura);
 }

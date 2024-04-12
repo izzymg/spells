@@ -1,7 +1,7 @@
 use core::fmt;
 use std::time::Duration;
 
-use bevy::prelude::*;
+use bevy::{log, prelude::*};
 use bincode;
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +17,14 @@ pub struct Aura {
     pub id: AuraID,
     pub duration: Timer,
     pub owner: Entity,
+}
+
+impl bevy::ecs::entity::MapEntities for Aura {
+    fn map_entities<M: EntityMapper>(&mut self, _entity_mapper: &mut M) {
+        let new_entity = _entity_mapper.map_entity(self.owner);
+        log::debug!("mapping aura {:?} -> {:?}", self.owner, new_entity);
+        self.owner = new_entity;
+    }
 }
 
 impl Aura {

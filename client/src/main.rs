@@ -1,7 +1,8 @@
 pub mod game;
+pub mod render;
 pub mod ui;
 pub mod world_connection;
-use std::error::Error;
+use std::{env, error::Error};
 
 use bevy::{log::LogPlugin, prelude::*};
 use world_connection::WorldConnectionPlugin;
@@ -16,24 +17,32 @@ pub enum GameStates {
 pub struct GameState(pub GameStates);
 
 fn main() -> Result<(), Box<dyn Error>> {
-    {
-        let mut app = bevy::app::App::new();
+    let args: Vec<String> = env::args().collect();
+    let mut app = App::new();
+
+    #[cfg(debug_assertions)]
+    app.add_plugins(DefaultPlugins.set(LogPlugin {
+        level: bevy::log::Level::DEBUG,
+        filter: "info,wgpu_core=warn,wgpu_hal=warn,spells=debug".into(),
+        ..Default::default()
+    }));
+
+    #[cfg(not(debug_assertions))]
+    app.add_plugins(DefaultPlugins.set(LogPlugin {
+        level: bevy::log::Level::INFO,
+        filter: "info,wgpu_core=warn,wgpu_hal=warn".into(),
+        ..Default::default()
+    }));
+
+    if let Some(mode) = args.get(1) {
+        match mode.as_str() {
+            "render" => {}
+            _ => {
+                println!("unrecognised: {}", mode)
+            }
+        }
+    } else {
         app.add_plugins((WorldConnectionPlugin, ui::UiPlugin, game::GamePlugin));
-
-        #[cfg(debug_assertions)]
-        app.add_plugins(DefaultPlugins.set(LogPlugin {
-            level: bevy::log::Level::DEBUG,
-            filter: "debug,wgpu_core=warn,wgpu_hal=warn,spells=info".into(),
-            ..Default::default()
-        }));
-
-        #[cfg(not(debug_assertions))]
-        app.add_plugins(DefaultPlugins.set(LogPlugin {
-            level: bevy::log::Level::INFO,
-            filter: "info,wgpu_core=warn,wgpu_hal=warn".into(),
-            ..Default::default()
-        }));
-
         app.insert_resource(GameState(GameStates::Menu));
         app.configure_sets(
             Update,
@@ -43,6 +52,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             ),
         );
         app.run();
-        Ok(())
     }
+    Ok(())
 }
