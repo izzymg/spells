@@ -36,7 +36,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if let Some(mode) = args.get(1) {
         match mode.as_str() {
-            "render" => {}
+            "render" => {
+                app.add_plugins(render::RenderPlugin);
+            }
             _ => {
                 println!("unrecognised: {}", mode)
             }
@@ -51,7 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 GameStates::Game.run_if(|s: Res<GameState>| s.0 == GameStates::Game),
             ),
         );
-        app.run();
     }
+    app.run();
     Ok(())
 }
