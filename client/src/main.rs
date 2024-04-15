@@ -1,11 +1,11 @@
 pub mod game;
 pub mod render;
 pub mod ui;
+pub mod window;
 pub mod world_connection;
-use std::{env, error::Error};
 
 use bevy::{log::LogPlugin, prelude::*};
-use world_connection::WorldConnectionPlugin;
+use std::{env, error::Error};
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GameStates {
@@ -34,9 +34,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         ..Default::default()
     }));
 
+    app.insert_resource(GameState(GameStates::Menu));
+    app.configure_sets(
+        Update,
+        (
+            GameStates::Menu.run_if(|s: Res<GameState>| s.0 == GameStates::Menu),
+            GameStates::Game.run_if(|s: Res<GameState>| s.0 == GameStates::Game),
+        ),
+    );
+
     if let Some(mode) = args.get(1) {
         match mode.as_str() {
             "render" => {
+                app.add_plugins(window::WindowPlugin);
                 app.add_plugins(render::RenderPlugin);
             }
             _ => {
@@ -44,15 +54,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     } else {
-        app.add_plugins((WorldConnectionPlugin, ui::UiPlugin, game::GamePlugin));
-        app.insert_resource(GameState(GameStates::Menu));
-        app.configure_sets(
-            Update,
-            (
-                GameStates::Menu.run_if(|s: Res<GameState>| s.0 == GameStates::Menu),
-                GameStates::Game.run_if(|s: Res<GameState>| s.0 == GameStates::Game),
-            ),
-        );
+        app.add_plugins((
+            window::WindowPlugin,
+            world_connection::WorldConnectionPlugin,
+            ui::UiPlugin,
+            game::GamePlugin,
+        ));
     }
     app.run();
     Ok(())

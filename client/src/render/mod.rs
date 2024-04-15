@@ -7,6 +7,7 @@ use bevy::{
     },
 };
 mod orbit_cam;
+use crate::{GameState, GameStates};
 
 const VOXEL_SIZE: i32 = 1;
 
@@ -116,10 +117,15 @@ fn sys_create_camera_light(
         }
     }
 }
+
 pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_systems(Update, orbit_cam::sys_free_camera);
+
+        // set game state so we get cursor features etc
+        app.world.get_resource_mut::<GameState>().unwrap().0 = GameStates::Game;
+
+        app.add_systems(Update, (orbit_cam::sys_free_camera, orbit_cam::sys_free_camera_move));
         app.add_systems(Startup, sys_create_camera_light);
         app.insert_resource(VoxelTerrain(vec![
             Voxel(-4, 0, 0),
