@@ -3,6 +3,8 @@ pub mod render;
 pub mod ui;
 pub mod window;
 pub mod world_connection;
+pub mod editor;
+pub mod controls;
 
 use bevy::{log::LogPlugin, prelude::*};
 use std::{env, error::Error};
@@ -20,12 +22,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let mut app = App::new();
 
+    // Diagnostics
     #[cfg(debug_assertions)]
-    app.add_plugins(DefaultPlugins.set(LogPlugin {
-        level: bevy::log::Level::DEBUG,
-        filter: "info,wgpu_core=warn,wgpu_hal=warn,spells=debug".into(),
-        ..Default::default()
-    }));
+    {
+        app.add_plugins(DefaultPlugins.set(LogPlugin {
+            level: bevy::log::Level::DEBUG,
+            filter: "info,wgpu_core=warn,wgpu_hal=warn,spells=debug".into(),
+            ..Default::default()
+        }));
+        app.add_plugins((
+            iyes_perf_ui::PerfUiPlugin,
+            bevy::diagnostic::FrameTimeDiagnosticsPlugin,
+            bevy::diagnostic::EntityCountDiagnosticsPlugin,
+            bevy::diagnostic::SystemInformationDiagnosticsPlugin,
+        ));
+
+        app.add_systems(Startup, |mut commands: Commands| {
+            commands.spawn(iyes_perf_ui::PerfUiCompleteBundle::default());
+        });
+    }
 
     #[cfg(not(debug_assertions))]
     app.add_plugins(DefaultPlugins.set(LogPlugin {
@@ -35,6 +50,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }));
 
     app.insert_resource(GameState(GameStates::Menu));
+    app.add_plugins((render::RenderPlugin, window::WindowPlugin, ui::UiPlugin));
     app.configure_sets(
         Update,
         (
@@ -45,9 +61,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if let Some(mode) = args.get(1) {
         match mode.as_str() {
-            "render" => {
-                app.add_plugins(window::WindowPlugin);
-                app.add_plugins(render::RenderPlugin);
+            "editor" => {
+                app.add_plugins(editor::EditorPlugin);
             }
             _ => {
                 println!("unrecognised: {}", mode)
@@ -55,9 +70,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     } else {
         app.add_plugins((
-            window::WindowPlugin,
             world_connection::WorldConnectionPlugin,
-            ui::UiPlugin,
             game::GamePlugin,
         ));
     }

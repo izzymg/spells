@@ -1,20 +1,17 @@
-use bevy::{
-    prelude::*,
-    render::{
-        mesh::Indices,
-        render_asset::RenderAssetUsages,
-        render_resource::PrimitiveTopology,
-    },
-};
-mod orbit_cam;
 use crate::{GameState, GameStates};
+use bevy::{
+    ecs::system::SystemParam,
+    log,
+    prelude::*,
+    render::{mesh::Indices, render_asset::RenderAssetUsages, render_resource::PrimitiveTopology},
+};
 
 const VOXEL_SIZE: i32 = 1;
 
-struct Voxel(i32, i32, i32);
+pub struct Voxel(pub i32, pub i32, pub i32);
 
 #[derive(Resource)]
-struct VoxelTerrain(Vec<Voxel>);
+pub struct VoxelTerrain(pub Vec<Voxel>);
 
 impl VoxelTerrain {
     fn neighbor_right(&self, index: usize) -> bool {
@@ -61,59 +58,108 @@ fn create_quad() -> Mesh {
     .with_inserted_indices(Indices::U32(vec![0, 3, 1, 1, 3, 2]))
 }
 
-fn sys_create_camera_light(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    voxel_terrain: Res<VoxelTerrain>,
-) {
-    commands.spawn((Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 10.0, -10.0),
-        ..default()
-    }, orbit_cam::FreeCamera::new_with_angle(-53.0_f32.to_radians(), 180.0_f32.to_radians())));
+#[derive(Resource, Default)]
+struct TerrainAssets {
+    quad_mesh: Handle<Mesh>,
+    default_mat: Handle<StandardMaterial>,
+    blue_mat: Handle<StandardMaterial>,
+}
 
-    commands.spawn(PointLightBundle {
-        transform: Transform::from_xyz(0.0, 1.0, -1.0).looking_at(Vec3::Z, Vec3::Y),
+/// Load & create the terrain asset data
+fn sys_populate_assets_ev(
+    mut material_assets: ResMut<Assets<StandardMaterial>>,
+    mut mesh_assets: ResMut<Assets<Mesh>>,
+    mut terrain_assets: ResMut<TerrainAssets>,
+) {
+    log::info!("creating assets");
+    terrain_assets.quad_mesh = mesh_assets.add(create_quad());
+    terrain_assets.default_mat = material_assets.add(StandardMaterial {
+        base_color: Color::RED,
         ..default()
     });
+    terrain_assets.blue_mat = material_assets.add(StandardMaterial {
+        base_color: Color::BLUE,
+        ..default()
+    });
+}
 
-    let mesh_handle: Handle<Mesh> = meshes.add(create_quad());
+/// Instruct a generation of the given terrain data
+#[derive(Event)]
+pub struct GenerateTerrainEvent {
+    pub terrain: VoxelTerrain,
+}
 
-    // spawn quads at each voxel position
-    for i in voxel_terrain.0.iter() {
-        // facing -z
-        {
-            let mut tr = Transform::from_xyz((i.0 * VOXEL_SIZE) as f32, 0.0, 0.0);
-            tr.rotate_y((180.0_f32).to_radians());
-            commands.spawn((
+#[derive(SystemParam)]
+struct TerrainGenerationSysParams<'w, 's> {
+    commands: Commands<'w, 's>,
+    assets: Res<'w, TerrainAssets>,
+}
+
+impl<'w, 's> TerrainGenerationSysParams<'w, 's> {
+    fn spawn_quad(&mut self, transform: Transform, blue: bool) -> Entity {
+        let mat = if blue {
+            self.assets.blue_mat.clone()
+        } else {
+            self.assets.default_mat.clone()
+        };
+        self.commands
+            .spawn((
                 PbrBundle {
-                    mesh: mesh_handle.clone(),
-                    material: materials.add(StandardMaterial {
-                        base_color: Color::RED,
-                        ..default()
-                    }),
-                    transform: tr,
+                    mesh: self.assets.quad_mesh.clone(),
+                    material: mat,
+                    transform,
                     ..default()
                 },
                 CustomUV,
-            ));
-        }// facing y
-        {
-            let mut tr = Transform::from_xyz((i.0 * VOXEL_SIZE) as f32, 0.0, 0.0);
-            tr.rotate_y((180.0_f32).to_radians());
-            tr.rotate_x((90.0_f32).to_radians());
-            commands.spawn((
-                PbrBundle {
-                    mesh: mesh_handle.clone(),
-                    material: materials.add(StandardMaterial {
-                        base_color: Color::BLUE,
-                        ..default()
-                    }),
-                    transform: tr,
-                    ..default()
-                },
-                CustomUV,
-            ));
+            ))
+            .id()
+    }
+}
+
+fn sys_generate_terrain(
+    mut sys_params: TerrainGenerationSysParams,
+    mut voxel_terrain_ev: EventReader<GenerateTerrainEvent>,
+) {
+    for ev in voxel_terrain_ev.read() {
+        log::info!("regenerating terrain");
+        // spawn quads at each voxel position
+        for i in ev.terrain.0.iter() {
+            // facing -z
+            {
+                let mut tr = Transform::from_xyz((i.0 * VOXEL_SIZE) as f32, 0.0, 0.0);
+                tr.rotate_y((180.0_f32).to_radians());
+                sys_params.spawn_quad(tr, false);
+            }
+            // facing +z
+            {
+                let mut tr = Transform::from_xyz((i.0 * VOXEL_SIZE) as f32, 0.0, 0.0);
+                tr.rotate_y((0.0_f32).to_radians());
+                sys_params.spawn_quad(tr, false);
+            }
+            // facing -y
+            {
+                let mut tr = Transform::from_xyz((i.0 * VOXEL_SIZE) as f32, 0.0, 0.0);
+                tr.rotate_x((90.0_f32).to_radians());
+                sys_params.spawn_quad(tr, true);
+            }
+            // facing +y
+            {
+                let mut tr = Transform::from_xyz((i.0 * VOXEL_SIZE) as f32, 0.0, 0.0);
+                tr.rotate_x((270.0_f32).to_radians());
+                sys_params.spawn_quad(tr, true);
+            }
+            // facing +x
+            {
+                let mut tr = Transform::from_xyz((i.0 * VOXEL_SIZE) as f32, 0.0, 0.0);
+                tr.rotate_y((90.0_f32).to_radians());
+                sys_params.spawn_quad(tr, true);
+            }
+            // facing -x
+            {
+                let mut tr = Transform::from_xyz((i.0 * VOXEL_SIZE) as f32, 0.0, 0.0);
+                tr.rotate_y((270.0_f32).to_radians());
+                sys_params.spawn_quad(tr, true);
+            }
         }
     }
 }
@@ -121,23 +167,10 @@ fn sys_create_camera_light(
 pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-
-        // set game state so we get cursor features etc
-        app.world.get_resource_mut::<GameState>().unwrap().0 = GameStates::Game;
-
-        app.add_systems(Update, (orbit_cam::sys_free_camera, orbit_cam::sys_free_camera_move));
-        app.add_systems(Startup, sys_create_camera_light);
-        app.insert_resource(VoxelTerrain(vec![
-            Voxel(-4, 0, 0),
-            Voxel(-3, 0, 0),
-            Voxel(-2, 0, 0),
-            Voxel(-1, 0, 0),
-            Voxel(0, 0, 0),
-            Voxel(1, 0, 0),
-            Voxel(2, 0, 0),
-            Voxel(3, 0, 0),
-            Voxel(4, 0, 0),
-        ]));
+        app.insert_resource(TerrainAssets::default());
+        app.add_event::<GenerateTerrainEvent>();
+        app.add_systems(Startup, sys_populate_assets_ev);
+        app.add_systems(Update, sys_generate_terrain);
     }
 }
 

@@ -4,9 +4,16 @@ use bevy::{
     prelude::*,
 };
 
-/// Tags an entity as capable of panning and orbiting.
+pub struct FreeCameraPlugin;
+impl Plugin for FreeCameraPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, (sys_free_camera_look, sys_free_camera_move));
+    }
+}
+
+/// Tags a camera as capable of free movement.
 #[derive(Component)]
-pub(super) struct FreeCamera {
+pub struct FreeCamera {
     pub look_sensitivity: f32,
     pub move_speed: f32,
     pub invert_pitch: bool,
@@ -40,7 +47,7 @@ impl FreeCamera {
 }
 
 /// Pan the camera with middle mouse click, zoom with scroll wheel, orbit with right mouse click.
-pub(super) fn sys_free_camera(
+fn sys_free_camera_look(
     mut ev_motion: EventReader<MouseMotion>,
     mut query: Query<(&mut Transform, &mut FreeCamera)>,
 ) {
@@ -64,7 +71,7 @@ pub(super) fn sys_free_camera(
     }
 }
 
-pub(super) fn sys_free_camera_move(
+fn sys_free_camera_move(
     buttons: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     time: Res<Time>,
