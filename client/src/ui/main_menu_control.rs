@@ -1,9 +1,5 @@
-use bevy::ecs::{
-    event::{Event, EventReader},
-    system::{Commands, Res, ResMut, Resource},
-};
-
-use crate::{world_connection, GameState, GameStates};
+use bevy::prelude::*;
+use crate::{world_connection, GameStates};
 
 #[derive(Resource, Debug, Default)]
 pub struct ConnectionStatus {
@@ -31,7 +27,7 @@ pub(super) fn sys_menu_connect_ev(
 pub(super) fn sys_update_connection_status(
     world_conn: Res<world_connection::WorldConnection>,
     mut ui_status: ResMut<ConnectionStatus>,
-    mut game_state: ResMut<GameState>,
+    mut next_game_state: ResMut<NextState<GameStates>>,
 ) {
     if let Some(msg) = &world_conn.message {
         ui_status.status = msg.to_string();
@@ -39,7 +35,7 @@ pub(super) fn sys_update_connection_status(
             world_connection::ServerStreamStatus::Connected,
         ) = msg
         {
-            game_state.0 = GameStates::Game;
+            next_game_state.set(GameStates::Game);
         }
     }
 }

@@ -1,7 +1,7 @@
 use bevy::{log, prelude::*};
 
 use crate::ui::widgets;
-use crate::{GameState, GameStates};
+use crate::GameStates;
 
 use super::main_menu_control::{self, ConnectEvent};
 
@@ -44,12 +44,8 @@ pub(super) fn sys_update_status_text(
     }
 }
 
-/// Create menu items when our game state changes.
-pub(super) fn sys_build_menus(mut commands: Commands, game_state: Res<GameState>) {
-    if !(game_state.is_changed() && game_state.0 == GameStates::Menu) {
-        return;
-    }
-    log::info!("spawning menu");
+pub(super) fn sys_create_main_menu(mut commands: Commands) {
+    log::info!("spawning main menu");
     commands.spawn((Camera2dBundle::default(), MenuItem));
     let layout = commands
         .spawn((
@@ -90,15 +86,10 @@ pub(super) fn sys_build_menus(mut commands: Commands, game_state: Res<GameState>
     });
 }
 
-/// Despawn menu items when our game state changes.
-pub(super) fn sys_cleanup_menu_items(
+pub(super) fn sys_cleanup_main_menu(
     mut commands: Commands,
     query: Query<Entity, With<MenuItem>>,
-    game_state: Res<GameState>,
 ) {
-    if !(game_state.is_changed() && game_state.0 != GameStates::Menu) {
-        return;
-    }
     log::info!("cleaning up menu");
 
     for entity in query.iter() {

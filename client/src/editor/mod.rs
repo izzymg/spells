@@ -1,4 +1,4 @@
-use crate::{controls::free_cam, render, GameState, GameStates};
+use crate::{controls::free_cam, render, GameStates};
 use bevy::{input, log, prelude::*};
 
 #[derive(Resource, Default)]
@@ -39,7 +39,6 @@ fn sys_add_terrain(
     mouse_buttons: Res<input::ButtonInput<input::mouse::MouseButton>>,
 ) {
     if mouse_buttons.just_released(MouseButton::Left) {
-        log::info!("checking: {}", place_preview.0);
         if let Some(i) = editor_terrain.0.find(place_preview.0) {
             editor_terrain.0.remove(i);
         } else {
@@ -54,8 +53,10 @@ fn sys_add_terrain(
 pub struct EditorPlugin;
 impl Plugin for EditorPlugin {
     fn build(&self, app: &mut App) {
+        // push straight into Game to avoid the menu spawning
+        app.insert_state(GameStates::Game);
+
         app.add_plugins(free_cam::FreeCameraPlugin);
-        app.world.get_resource_mut::<GameState>().unwrap().0 = GameStates::Game;
         app.insert_resource(EditorTerrain::default());
         app.insert_resource(PlacePreview::default());
         app.add_systems(Startup, sys_spawn);

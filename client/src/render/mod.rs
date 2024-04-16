@@ -264,8 +264,6 @@ fn sys_generate_terrain(
                 sys_params.spawn_quad(tr, false);
                 quads_count += 1;
             }
-
-            log::debug!("{} quads spawned", quads_count);
         }
     }
 }

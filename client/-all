@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 app.add_plugins(editor::EditorPlugin);
             }
             _ => {
-                panic!("unrecognised: {}", mode)
+                println!("unrecognised: {}", mode)
             }
         }
     } else {
