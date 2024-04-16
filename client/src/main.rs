@@ -5,6 +5,7 @@ pub mod window;
 pub mod world_connection;
 pub mod editor;
 pub mod controls;
+pub mod input;
 
 use bevy::{log::LogPlugin, prelude::*};
 use std::{env, error::Error};
