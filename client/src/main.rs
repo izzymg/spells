@@ -1,11 +1,11 @@
+pub mod controls;
+pub mod editor;
 pub mod game;
+pub mod input;
 pub mod render;
 pub mod ui;
 pub mod window;
 pub mod world_connection;
-pub mod editor;
-pub mod controls;
-pub mod input;
 
 use bevy::{log::LogPlugin, prelude::*};
 use std::{env, error::Error};
@@ -49,7 +49,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         ..Default::default()
     }));
 
-    app.add_plugins((render::RenderPlugin, window::WindowPlugin, ui::UiPlugin));
+    app.add_plugins((
+        input::InputPlugin,
+        render::RenderPlugin,
+        window::WindowPlugin,
+        ui::UiPlugin,
+    ));
 
     if let Some(mode) = args.get(1) {
         match mode.as_str() {
@@ -61,10 +66,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     } else {
-        app.add_plugins((
-            world_connection::WorldConnectionPlugin,
-            game::GamePlugin,
-        ));
+        app.add_plugins((world_connection::WorldConnectionPlugin, game::GamePlugin));
     }
     app.run();
     Ok(())

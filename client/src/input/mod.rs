@@ -37,9 +37,16 @@ impl<T> ActionEvent<T> {
 
 /// Hardware agnostic input axis state
 #[derive(Resource, Default, Copy, Clone, Debug)]
-pub struct ActionAxes {
+pub struct InputAxes {
     pub movement: Vec2,
     pub look: Vec2,
+}
+
+impl InputAxes {
+    pub fn get_movement_3d(&self) -> Vec3 {
+        // -z goes forward in bevy
+        Vec3::new(self.movement.x, 0.0, -self.movement.y)
+    }
 }
 
 /// Maps keyboard codes to axes
@@ -131,20 +138,17 @@ fn sys_process_keycode_inputs(
 fn sys_process_keyboard_axes(
     key_inputs: Res<ButtonInput<KeyCode>>,
     key_axis_map: Res<KeyAxisMap>,
-    mut action_axes: ResMut<ActionAxes>,
+    mut input_axes: ResMut<InputAxes>,
 ) {
-    // just zero every input and then read every frame
-    action_axes.movement = Vec2::ZERO;
-    action_axes.look = Vec2::ZERO;
 
     for ev in key_inputs.get_pressed() {
         if let Some(action) = key_axis_map.map.get(ev) {
             match action {
                 Axis::Movement(dir) => {
-                    action_axes.movement += *dir;
+                    input_axes.movement += *dir;
                 }
                 Axis::Look(dir) => {
-                    action_axes.look += *dir;
+                    input_axes.look += *dir;
                 }
             }
         }
@@ -154,14 +158,8 @@ fn sys_process_keyboard_axes(
 fn sys_process_mouse_inputs(
     mouse_button_action_map: Res<MouseButtonActionMap>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
-    mut mouse_motion_evr: EventReader<MouseMotion>,
-    mut action_axes: ResMut<ActionAxes>,
     mut button_event_writer: EventWriter<ActionEvent<ButtonAction>>,
 ) {
-    for ev in mouse_motion_evr.read() {
-        action_axes.look = ev.delta;
-    }
-
     let mut event_buffer = vec![];
 
     for ev in mouse_buttons.get_just_pressed() {
@@ -192,6 +190,21 @@ fn sys_process_mouse_inputs(
     button_event_writer.send_batch(events);
 }
 
+// can't see a reason to support remapping mouselook lol
+fn sys_get_mouselook(mut mouse_evr: EventReader<MouseMotion>, mut input_axes: ResMut<InputAxes>) {
+    for ev in mouse_evr.read() {
+        input_axes.look = ev.delta;
+    }
+}
+
+fn sys_clear_axes(mut input_axes: ResMut<InputAxes>) {
+    input_axes.look = Vec2::ZERO;
+    input_axes.movement = Vec2::ZERO;
+}
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InputSystemSet;
+
 pub struct InputPlugin;
 
 impl Plugin for InputPlugin {
@@ -200,14 +213,16 @@ impl Plugin for InputPlugin {
         app.insert_resource(KeyActionMap::default());
         app.insert_resource(KeyAxisMap::default());
         app.insert_resource(MouseButtonActionMap::default());
-        app.insert_resource(ActionAxes::default());
+        app.insert_resource(InputAxes::default());
         app.add_systems(
             Update,
-            (
+            (sys_clear_axes, (
                 sys_process_mouse_inputs,
                 sys_process_keycode_inputs,
                 sys_process_keyboard_axes,
-            ),
+                sys_get_mouselook,
+            )).chain()
+                .in_set(InputSystemSet),
         );
     }
 }
@@ -249,7 +264,7 @@ mod testing {
         button_input.press(KeyCode::KeyW);
         button_input.press(KeyCode::ArrowRight);
         app.update();
-        let axes = app.world.get_resource::<ActionAxes>().unwrap();
+        let axes = app.world.get_resource::<InputAxes>().unwrap();
         assert_eq!(axes.movement, Vec2::Y);
         assert_eq!(axes.look, Vec2::X);
     }

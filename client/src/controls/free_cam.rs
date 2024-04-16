@@ -1,13 +1,15 @@
-use bevy::{
-    input::{mouse::MouseMotion, ButtonInput},
-    log,
-    prelude::*,
-};
+use bevy::prelude::*;
+
+use crate::input;
 
 pub struct FreeCameraPlugin;
 impl Plugin for FreeCameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (sys_free_camera_look, sys_free_camera_move));
+        app.add_systems(
+            Update,
+            (sys_speed_camera, sys_free_camera_look, sys_free_camera_move)
+                .after(input::InputSystemSet),
+        );
     }
 }
 
@@ -20,6 +22,7 @@ pub struct FreeCamera {
     pub invert_yaw: bool,
     yaw: f32,
     pitch: f32,
+    speed: f32,
 }
 
 impl Default for FreeCamera {
@@ -31,6 +34,7 @@ impl Default for FreeCamera {
             invert_yaw: false,
             yaw: 0.0,
             pitch: 0.0,
+            speed: 1.0,
         }
     }
 }
@@ -46,67 +50,55 @@ impl FreeCamera {
     }
 }
 
-/// Pan the camera with middle mouse click, zoom with scroll wheel, orbit with right mouse click.
 fn sys_free_camera_look(
-    mut ev_motion: EventReader<MouseMotion>,
+    input_axes: Res<input::InputAxes>,
     mut query: Query<(&mut Transform, &mut FreeCamera)>,
 ) {
-    for ev in ev_motion.read() {
-        let (mut cam_trans, mut cam) = query.single_mut();
-        let mut delta_y = ev.delta.y;
-        if cam.invert_pitch {
-            delta_y *= -1.0;
-        }
-        let mut delta_x = ev.delta.x;
-        if cam.invert_yaw {
-            delta_x *= -1.0;
-        }
-        cam.pitch -= (cam.look_sensitivity * delta_y)
-            .clamp(-90.0, 90.0)
-            .to_radians();
-        cam.yaw -= (cam.look_sensitivity * delta_x).to_radians();
-
-        cam_trans.rotation =
-            Quat::from_axis_angle(Vec3::Y, cam.yaw) * Quat::from_axis_angle(Vec3::X, cam.pitch);
+    let (mut cam_trans, mut cam) = query.single_mut();
+    let mut delta_y = input_axes.look.y;
+    if cam.invert_pitch {
+        delta_y *= -1.0;
     }
+    let mut delta_x = input_axes.look.x;
+    if cam.invert_yaw {
+        delta_x *= -1.0;
+    }
+    cam.pitch -= (cam.look_sensitivity * delta_y)
+        .clamp(-90.0, 90.0)
+        .to_radians();
+    cam.yaw -= (cam.look_sensitivity * delta_x).to_radians();
+
+    cam_trans.rotation =
+        Quat::from_axis_angle(Vec3::Y, cam.yaw) * Quat::from_axis_angle(Vec3::X, cam.pitch);
 }
 
 fn sys_free_camera_move(
-    buttons: Res<ButtonInput<KeyCode>>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    input_axes: Res<input::InputAxes>,
     time: Res<Time>,
     mut query: Query<(&mut Transform, &FreeCamera)>,
     mut gizmos: Gizmos,
 ) {
-    let mut wish_dir = Vec3::ZERO;
-    if buttons.pressed(KeyCode::KeyW) {
-        wish_dir.z -= 1.0;
-    }
-
-    if buttons.pressed(KeyCode::KeyS) {
-        wish_dir.z += 1.0;
-    }
-
-    if buttons.pressed(KeyCode::KeyD) {
-        wish_dir.x += 1.0;
-    }
-
-    if buttons.pressed(KeyCode::KeyA) {
-        wish_dir.x -= 1.0;
-    }
-
-    if wish_dir.length() <= 0.0 {
+    if input_axes.movement.length() <= 0.0 {
         return;
     }
-
     let (mut cam_trans, cam) = query.single_mut();
-    let speed = if mouse_buttons.pressed(MouseButton::Right) {
-        cam.move_speed * 3.0
-    } else {
-        cam.move_speed
-    };
-
-    let tr = cam_trans.rotation * (wish_dir).normalize() * speed * time.delta_seconds();
+    let tr = cam_trans.rotation
+        * input_axes.get_movement_3d().normalize()
+        * cam.speed
+        * time.delta_seconds();
     cam_trans.translation += tr;
     gizmos.ray(cam_trans.translation, tr, Color::BLUE);
+}
+
+fn sys_speed_camera(
+    mut buttons_evr: EventReader<input::ActionEvent<input::ButtonAction>>,
+    mut query: Query<&mut FreeCamera>,
+) {
+    let mut cam = query.single_mut();
+    cam.speed = cam.move_speed;
+    for ev in buttons_evr.read() {
+        if ev.action == input::Action::Secondary {
+            cam.speed = cam.move_speed * 3.0;
+        }
+    }
 }
