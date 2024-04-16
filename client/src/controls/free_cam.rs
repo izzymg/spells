@@ -29,7 +29,7 @@ impl Default for FreeCamera {
     fn default() -> Self {
         Self {
             move_speed: 9.0,
-            look_sensitivity: 0.2,
+            look_sensitivity: 0.5,
             invert_pitch: false,
             invert_yaw: false,
             yaw: 0.0,
