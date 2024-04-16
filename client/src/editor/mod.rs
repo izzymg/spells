@@ -1,5 +1,5 @@
 use crate::{controls::free_cam, input, render, GameStates};
-use bevy::{log, prelude::*};
+use bevy::{prelude::*};
 
 #[derive(Resource, Default)]
 struct PlacePreview(render::Voxel);

@@ -49,7 +49,6 @@ pub enum Direction {
 }
 
 impl VoxelTerrain {
-
     pub fn add(&mut self, v: Voxel) {
         self.0.push(v);
     }
@@ -107,7 +106,7 @@ impl VoxelTerrain {
                 in_range && (v.0 == uv.0 && v.1 == uv.1)
             })
             .any(|v| v.2 - uv.2 == dir)
-    } 
+    }
 }
 
 #[derive(Component)]
@@ -174,7 +173,7 @@ pub struct GenerateTerrainEvent {
 struct TerrainGenerationSysParams<'w, 's> {
     commands: Commands<'w, 's>,
     assets: Res<'w, TerrainAssets>,
-    query_voxels: Query<'w, 's, Entity, With<VoxelEntity>>
+    query_voxels: Query<'w, 's, Entity, With<VoxelEntity>>,
 }
 
 impl<'w, 's> TerrainGenerationSysParams<'w, 's> {
@@ -209,7 +208,7 @@ fn sys_generate_terrain(
 ) {
     for ev in voxel_terrain_ev.read() {
         log::info!("regenerating terrain");
-        
+
         sys_params.despawn_all_voxels();
 
         // spawn quads at each voxel position
@@ -220,49 +219,41 @@ fn sys_generate_terrain(
                 (i.2 * VOXEL_SIZE) as f32,
             );
             let tr = Transform::from_xyz(x, y, z);
-            let mut quads_count = 0;
-
             // facing -z
             if !ev.terrain.has_neighbor(index, Direction::Backward) {
                 let mut tr = tr;
                 tr.rotate_y((180.0_f32).to_radians());
                 sys_params.spawn_quad(tr, false);
-                quads_count += 1;
             }
             // facing +z
             if !ev.terrain.has_neighbor(index, Direction::Forward) {
                 let mut tr = tr;
                 tr.rotate_y((0.0_f32).to_radians());
                 sys_params.spawn_quad(tr, true);
-                quads_count += 1;
             }
             // facing -y
             if !ev.terrain.has_neighbor(index, Direction::Down) {
                 let mut tr = tr;
                 tr.rotate_x((90.0_f32).to_radians());
                 sys_params.spawn_quad(tr, false);
-                quads_count += 1;
             }
             // facing +y
             if !ev.terrain.has_neighbor(index, Direction::Up) {
                 let mut tr = tr;
                 tr.rotate_x((270.0_f32).to_radians());
                 sys_params.spawn_quad(tr, false);
-                quads_count += 1;
             }
             // facing +x
             if !ev.terrain.has_neighbor(index, Direction::Right) {
                 let mut tr = tr;
                 tr.rotate_y((90.0_f32).to_radians());
                 sys_params.spawn_quad(tr, false);
-                quads_count += 1;
             }
             // facing -x
             if !ev.terrain.has_neighbor(index, Direction::Left) {
                 let mut tr = tr;
                 tr.rotate_y((270.0_f32).to_radians());
                 sys_params.spawn_quad(tr, false);
-                quads_count += 1;
             }
         }
     }
