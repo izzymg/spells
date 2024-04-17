@@ -271,7 +271,6 @@ mod tests {
         };
 
         connect();
-        thread::sleep(Duration::from_secs(4));
         connect();
 
     }
