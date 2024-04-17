@@ -3,6 +3,7 @@ mod packet;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool, utils::dbg};
 use lib_spells::{net, shared};
 use std::sync::mpsc;
+use crate::game;
 
 fn sys_create_state() -> net::WorldState {
     net::WorldState::default()
@@ -38,8 +39,8 @@ fn sys_broadcast_state(
 }
 
 // wraps a send channel
-#[derive(bevy::ecs::system::Resource)]
-pub struct ClientStreamSender(mpsc::Sender<Vec<u8>>);
+#[derive(Resource)]
+struct ClientStreamSender(mpsc::Sender<Vec<u8>>);
 
 impl ClientStreamSender {
     pub fn new(tx: mpsc::Sender<Vec<u8>>) -> Self {
@@ -70,13 +71,13 @@ impl Plugin for NetPlugin {
 
         app.add_systems(
             FixedLast,
-            sys_create_state
+            (sys_create_state
                 .pipe(sys_update_component_world_state::<shared::Health>)
                 .pipe(sys_update_component_world_state::<shared::Aura>)
                 .pipe(sys_update_component_world_state::<shared::SpellCaster>)
                 .pipe(sys_update_component_world_state::<shared::CastingSpell>)
                 .pipe(sys_broadcast_state)
-                .map(dbg),
+                .map(dbg)).in_set(game::ServerSets::NetworkSend),
         );
     }
 }

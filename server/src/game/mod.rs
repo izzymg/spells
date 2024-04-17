@@ -15,10 +15,12 @@ pub mod scenes;
 /// Defines ordering of system processing across the game server.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ServerSets {
+    NetworkFetch, // process incoming network data from clients
     EntityProcessing,  // despawn dead, etc
     EffectCreation,    // creation of effect events (e.g. fireball at Bob for 32 dmg)
     EffectProcessing,  // simulation & processing of events
     EffectApplication, // application of processed events
+    NetworkSend,       // output of network data to clients
 }
 
 pub fn run_game_server() -> Result<(), Box<dyn Error>> {
@@ -51,10 +53,12 @@ pub fn run_game_server() -> Result<(), Box<dyn Error>> {
     .configure_sets(
         FixedUpdate,
         (
+            ServerSets::NetworkFetch,
             ServerSets::EntityProcessing,
             ServerSets::EffectCreation,
             ServerSets::EffectProcessing,
             ServerSets::EffectApplication,
+            ServerSets::NetworkSend,
         )
             .chain(),
     )
