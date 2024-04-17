@@ -1,4 +1,5 @@
 mod socket;
+mod packet;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool, utils::dbg};
 use lib_spells::{net, shared};
 use std::sync::mpsc;
