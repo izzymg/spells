@@ -36,7 +36,7 @@ fn sys_add_terrain(
     place_preview: ResMut<PlacePreview>,
     mut editor_terrain: ResMut<EditorTerrain>,
     mut terrain_event_send: EventWriter<render::GenerateTerrainEvent>,
-    mut button_state: ResMut<input::AtionButtons>,
+    mut button_state: ResMut<input::ActionButtons>,
 ) {
     if button_state.get_button_state(input::Action::Primary) == input::ButtonState::Pressed {
         if let Some(i) = editor_terrain.0.find(place_preview.0) {
