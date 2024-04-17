@@ -243,13 +243,13 @@ impl ClientServer {
 #[cfg(test)]
 mod tests {
     use std::{
-        io::{Read, Write}, net::TcpStream, sync::mpsc, thread, time::Duration
+        io::{Read, Write}, net::TcpStream, sync::mpsc, thread,
     };
 
     use super::ClientServer;
 
     #[test]
-    fn test_getter() {
+    fn test_incoming_client_recv() {
         let mut client_getter = ClientServer::create().unwrap();
         // create a client stream
         // create a thread that blocks & fetches our clients
@@ -263,7 +263,6 @@ mod tests {
 
         let connect = || {
             let mut stream = TcpStream::connect("127.0.0.1:7776").unwrap();
-            println!("stream connected");
             let mut first_response = [0; lib_spells::SERVER_HEADER.len()];
             stream.read_exact(&mut first_response).unwrap();
             assert_eq!(lib_spells::SERVER_HEADER.as_bytes(), first_response);
