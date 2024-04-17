@@ -26,12 +26,12 @@ pub enum ButtonState {
 
 /// Hardware-type agnostic input axis state
 #[derive(Resource, Default, Copy, Clone, Debug)]
-pub struct InputAxes {
+pub struct ActionAxes {
     pub movement: Vec2,
     pub look: Vec2,
 }
 
-impl InputAxes {
+impl ActionAxes {
     pub fn get_movement_3d(&self) -> Vec3 {
         // -z goes forward in bevy
         Vec3::new(self.movement.x, 0.0, -self.movement.y)
@@ -40,11 +40,11 @@ impl InputAxes {
 
 /// Hardware-type agnostic input button state
 #[derive(Resource, Default, Clone, Debug)]
-pub struct InputButtons {
+pub struct ActionButtons {
     map: HashMap<Action, ButtonState>,
 }
 
-impl InputButtons {
+impl ActionButtons {
     fn set_state(&mut self, action: Action, state: ButtonState) {
         self.map.insert(action, state);
     }
@@ -122,7 +122,7 @@ fn sys_process_buttons(
     mouse_inputs: Res<ButtonInput<MouseButton>>,
     key_inputs: Res<ButtonInput<KeyCode>>,
     input_buttons: Res<InputButtonActionMap>,
-    mut action_state: ResMut<InputButtons>,
+    mut action_state: ResMut<ActionButtons>,
 ) {
     let key_inputs = key_inputs.into_inner();
     let mouse_inputs = mouse_inputs.into_inner();
@@ -141,7 +141,7 @@ fn sys_process_buttons(
 fn sys_process_keyboard_axes(
     key_inputs: Res<ButtonInput<KeyCode>>,
     key_axis_map: Res<KeyAxisMap>,
-    mut input_axes: ResMut<InputAxes>,
+    mut input_axes: ResMut<ActionAxes>,
 ) {
     for ev in key_inputs.get_pressed() {
         if let Some(action) = key_axis_map.map.get(ev) {
@@ -158,13 +158,13 @@ fn sys_process_keyboard_axes(
 }
 
 // can't see a reason to support remapping mouselook lol
-fn sys_get_mouselook(mut mouse_evr: EventReader<MouseMotion>, mut input_axes: ResMut<InputAxes>) {
+fn sys_get_mouselook(mut mouse_evr: EventReader<MouseMotion>, mut input_axes: ResMut<ActionAxes>) {
     for ev in mouse_evr.read() {
         input_axes.look = ev.delta;
     }
 }
 
-fn sys_clear_axes(mut input_axes: ResMut<InputAxes>) {
+fn sys_clear_axes(mut input_axes: ResMut<ActionAxes>) {
     input_axes.look = Vec2::ZERO;
     input_axes.movement = Vec2::ZERO;
 }
@@ -178,8 +178,8 @@ impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(KeyAxisMap::default());
         app.insert_resource(InputButtonActionMap::default());
-        app.insert_resource(InputAxes::default());
-        app.insert_resource(InputButtons::default());
+        app.insert_resource(ActionAxes::default());
+        app.insert_resource(ActionButtons::default());
         app.add_systems(
             Update,
             (
@@ -211,7 +211,7 @@ mod testing {
             .unwrap();
         button_input.press(KeyCode::Space);
         app.update();
-        let mut button_state = app.world.get_resource_mut::<InputButtons>().unwrap();
+        let mut button_state = app.world.get_resource_mut::<ActionButtons>().unwrap();
         assert!(button_state.get_button_state(Action::Jump) == ButtonState::Held);
     }
 
@@ -226,7 +226,7 @@ mod testing {
         button_input.press(KeyCode::KeyW);
         button_input.press(KeyCode::ArrowRight);
         app.update();
-        let axes = app.world.get_resource::<InputAxes>().unwrap();
+        let axes = app.world.get_resource::<ActionAxes>().unwrap();
         assert_eq!(axes.movement, Vec2::Y);
         assert_eq!(axes.look, Vec2::X);
     }

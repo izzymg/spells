@@ -51,7 +51,7 @@ impl FreeCamera {
 }
 
 fn sys_free_camera_look(
-    input_axes: Res<input::InputAxes>,
+    input_axes: Res<input::ActionAxes>,
     mut query: Query<(&mut Transform, &mut FreeCamera)>,
 ) {
     let (mut cam_trans, mut cam) = query.single_mut();
@@ -73,7 +73,7 @@ fn sys_free_camera_look(
 }
 
 fn sys_free_camera_move(
-    input_axes: Res<input::InputAxes>,
+    input_axes: Res<input::ActionAxes>,
     time: Res<Time>,
     mut query: Query<(&mut Transform, &FreeCamera)>,
     mut gizmos: Gizmos,
@@ -91,7 +91,7 @@ fn sys_free_camera_move(
 }
 
 fn sys_speed_camera(
-    mut button_state: ResMut<input::InputButtons>,
+    mut button_state: ResMut<input::ActionButtons>,
     mut query: Query<&mut FreeCamera>,
 ) {
     let mut cam = query.single_mut();
