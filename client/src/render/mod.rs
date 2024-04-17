@@ -5,11 +5,12 @@ use bevy::{
     render::{mesh::Indices, render_asset::RenderAssetUsages, render_resource::PrimitiveTopology},
 };
 use std::fmt;
+use serde::{Deserialize, Serialize};
 
 // Size in world space of voxels
 pub const VOXEL_SIZE: i32 = 1;
 
-#[derive(Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, Copy, Clone, PartialEq, Eq)]
 pub struct Voxel(pub i32, pub i32, pub i32);
 
 impl From<(i32, i32, i32)> for Voxel {
@@ -36,7 +37,7 @@ impl fmt::Display for Voxel {
     }
 }
 
-#[derive(Resource, Default, Clone)]
+#[derive(Resource, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct VoxelTerrain(pub Vec<Voxel>);
 
 pub enum Direction {

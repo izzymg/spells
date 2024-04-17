@@ -1,5 +1,5 @@
 use crate::{controls::free_cam, input, render, GameStates};
-use bevy::prelude::*;
+use bevy::{log, prelude::*};
 
 #[derive(Resource, Default)]
 struct PlacePreview(render::Voxel);
@@ -53,6 +53,7 @@ fn sys_add_terrain(
 pub struct EditorPlugin;
 impl Plugin for EditorPlugin {
     fn build(&self, app: &mut App) {
+
         // push straight into Game to avoid the menu spawning
         app.insert_state(GameStates::Game);
 
