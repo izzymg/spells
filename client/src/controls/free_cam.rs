@@ -91,14 +91,12 @@ fn sys_free_camera_move(
 }
 
 fn sys_speed_camera(
-    mut buttons_evr: EventReader<input::ActionEvent<input::ButtonAction>>,
+    mut button_state: ResMut<input::InputButtons>,
     mut query: Query<&mut FreeCamera>,
 ) {
     let mut cam = query.single_mut();
     cam.speed = cam.move_speed;
-    for ev in buttons_evr.read() {
-        if ev.action == input::Action::Secondary {
-            cam.speed = cam.move_speed * 3.0;
-        }
+    if button_state.get_button_state(input::Action::Secondary) == input::ButtonState::Held {
+        cam.speed = cam.move_speed * 3.0;
     }
 }

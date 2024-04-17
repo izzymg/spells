@@ -1,5 +1,5 @@
 use crate::{controls::free_cam, input, render, GameStates};
-use bevy::{prelude::*};
+use bevy::prelude::*;
 
 #[derive(Resource, Default)]
 struct PlacePreview(render::Voxel);
@@ -36,19 +36,17 @@ fn sys_add_terrain(
     place_preview: ResMut<PlacePreview>,
     mut editor_terrain: ResMut<EditorTerrain>,
     mut terrain_event_send: EventWriter<render::GenerateTerrainEvent>,
-    mut button_action_evr: EventReader<input::ActionEvent<input::ButtonAction>>,
+    mut button_state: ResMut<input::InputButtons>,
 ) {
-    for ev in button_action_evr.read() {
-        if input::Action::Primary == ev.action && ev.data == input::ButtonAction::Pressed {
-            if let Some(i) = editor_terrain.0.find(place_preview.0) {
-                editor_terrain.0.remove(i);
-            } else {
-                editor_terrain.0.add(place_preview.0);
-            }
-            terrain_event_send.send(render::GenerateTerrainEvent {
-                terrain: editor_terrain.0.clone(), //ew
-            });
+    if button_state.get_button_state(input::Action::Primary) == input::ButtonState::Pressed {
+        if let Some(i) = editor_terrain.0.find(place_preview.0) {
+            editor_terrain.0.remove(i);
+        } else {
+            editor_terrain.0.add(place_preview.0);
         }
+        terrain_event_send.send(render::GenerateTerrainEvent {
+            terrain: editor_terrain.0.clone(), //ew
+        });
     }
 }
 

@@ -1,7 +1,7 @@
-use bevy::{input::mouse::MouseMotion, prelude::*};
+use bevy::{input::mouse::MouseMotion, prelude::*, reflect};
 use std::collections::HashMap;
 
-#[derive(Copy, PartialEq, Debug, Clone)]
+#[derive(Hash, Eq, Copy, PartialEq, Debug, Clone)]
 pub enum Action {
     Jump,
     Activate,
@@ -15,27 +15,16 @@ pub enum Axis {
     Movement(Vec2),
 }
 
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
-pub enum ButtonAction {
+#[derive(Default, PartialEq, Eq, Copy, Clone, Debug)]
+pub enum ButtonState {
+    #[default]
+    None,
     Pressed,
     Released,
     Held,
 }
 
-/// Hardware type agnostic input event
-#[derive(Event)]
-pub struct ActionEvent<T> {
-    pub action: Action,
-    pub data: T,
-}
-
-impl<T> ActionEvent<T> {
-    fn create(action: Action, data: T) -> Self {
-        Self { action, data }
-    }
-}
-
-/// Hardware agnostic input axis state
+/// Hardware-type agnostic input axis state
 #[derive(Resource, Default, Copy, Clone, Debug)]
 pub struct InputAxes {
     pub movement: Vec2,
@@ -49,9 +38,52 @@ impl InputAxes {
     }
 }
 
-/// Maps keyboard codes to axes
+/// Hardware-type agnostic input button state
+#[derive(Resource, Default, Clone, Debug)]
+pub struct InputButtons {
+    map: HashMap<Action, ButtonState>,
+}
+
+impl InputButtons {
+    fn set_state(&mut self, action: Action, state: ButtonState) {
+        self.map.insert(action, state);
+    }
+
+    // lazily creates state for actions
+    pub fn get_button_state(&mut self, action: Action) -> ButtonState {
+        if let Some(state) = self.map.get(&action) {
+            *state
+        } else {
+            self.map.insert(action, ButtonState::default());
+            ButtonState::default()
+        }
+    }
+}
+
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug, Reflect)]
+enum Input {
+    MouseButton(MouseButton),
+    KeyCode(KeyCode),
+}
+
+/// Maps buttons to actions
 #[derive(Resource)]
-pub struct KeyAxisMap {
+struct InputButtonActionMap(HashMap<Input, Action>);
+
+impl Default for InputButtonActionMap {
+    fn default() -> Self {
+        Self(HashMap::from([
+            (Input::KeyCode(KeyCode::Space), Action::Jump),
+            (Input::KeyCode(KeyCode::KeyE), Action::Activate),
+            (Input::MouseButton(MouseButton::Left), Action::Primary),
+            (Input::MouseButton(MouseButton::Right), Action::Secondary),
+        ]))
+    }
+}
+
+/// Maps key codes to axes
+#[derive(Resource)]
+struct KeyAxisMap {
     map: HashMap<KeyCode, Axis>,
 }
 
@@ -74,65 +106,36 @@ impl Default for KeyAxisMap {
     }
 }
 
-/// Maps mouse buttons to actions
-#[derive(Resource)]
-pub struct MouseButtonActionMap {
-    map: HashMap<MouseButton, Action>,
+fn input_to_button_state<T: Send + Copy + std::hash::Hash + Eq + Sync>(code: T, input: &ButtonInput<T>) -> ButtonState {
+   if input.just_pressed(code) {
+       ButtonState::Pressed
+   } else if input.just_released(code) {
+       ButtonState::Released
+   } else if input.pressed(code) {
+       ButtonState::Held
+   } else {
+       ButtonState::None
+   }
 }
 
-impl Default for MouseButtonActionMap {
-    fn default() -> Self {
-        Self {
-            map: HashMap::from([
-                (MouseButton::Left, Action::Primary),
-                (MouseButton::Right, Action::Secondary),
-            ]),
-        }
-    }
-}
-
-/// Maps keyboard codes to actions
-#[derive(Resource)]
-pub struct KeyActionMap {
-    map: HashMap<KeyCode, Action>,
-}
-
-impl Default for KeyActionMap {
-    fn default() -> Self {
-        Self {
-            map: HashMap::from([
-                (KeyCode::Space, Action::Jump),
-                (KeyCode::KeyE, Action::Activate),
-            ]),
-        }
-    }
-}
-
-fn sys_process_keycode_inputs(
-    key_actions: Res<KeyActionMap>,
-    key_events: Res<ButtonInput<KeyCode>>,
-    mut button_event_writer: EventWriter<ActionEvent<ButtonAction>>,
+fn sys_process_buttons(
+    mouse_inputs: Res<ButtonInput<MouseButton>>,
+    key_inputs: Res<ButtonInput<KeyCode>>,
+    input_buttons: Res<InputButtonActionMap>,
+    mut action_state: ResMut<InputButtons>,
 ) {
-    let pressed = key_events.get_just_pressed().filter_map(|code| {
-        key_actions
-            .map
-            .get(code)
-            .map(|action| ActionEvent::<ButtonAction>::create(*action, ButtonAction::Pressed))
-    });
-    let released = key_events.get_just_released().filter_map(|code| {
-        key_actions
-            .map
-            .get(code)
-            .map(|action| ActionEvent::<ButtonAction>::create(*action, ButtonAction::Released))
-    });
-    let held = key_events.get_pressed().filter_map(|code| {
-        key_actions
-            .map
-            .get(code)
-            .map(|action| ActionEvent::<ButtonAction>::create(*action, ButtonAction::Held))
-    });
-
-    button_event_writer.send_batch(held.chain(released.chain(pressed)));
+    let key_inputs = key_inputs.into_inner();
+    let mouse_inputs = mouse_inputs.into_inner();
+    for (input, action) in input_buttons.0.iter() {
+        let state = match input {
+            Input::KeyCode(key) =>
+                input_to_button_state(*key, key_inputs),
+            Input::MouseButton(btn) =>
+                input_to_button_state(*btn, mouse_inputs)
+        };
+        
+        action_state.set_state(*action, state);
+    }
 }
 
 fn sys_process_keyboard_axes(
@@ -140,7 +143,6 @@ fn sys_process_keyboard_axes(
     key_axis_map: Res<KeyAxisMap>,
     mut input_axes: ResMut<InputAxes>,
 ) {
-
     for ev in key_inputs.get_pressed() {
         if let Some(action) = key_axis_map.map.get(ev) {
             match action {
@@ -153,41 +155,6 @@ fn sys_process_keyboard_axes(
             }
         }
     }
-}
-
-fn sys_process_mouse_inputs(
-    mouse_button_action_map: Res<MouseButtonActionMap>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
-    mut button_event_writer: EventWriter<ActionEvent<ButtonAction>>,
-) {
-    let mut event_buffer = vec![];
-
-    for ev in mouse_buttons.get_just_pressed() {
-        if let Some(action) = mouse_button_action_map.map.get(ev) {
-            event_buffer.push((action, ButtonAction::Pressed));
-        }
-    }
-
-    for ev in mouse_buttons.get_just_released() {
-        if let Some(action) = mouse_button_action_map.map.get(ev) {
-            event_buffer.push((action, ButtonAction::Released));
-        }
-    }
-
-    for ev in mouse_buttons.get_pressed() {
-        if let Some(action) = mouse_button_action_map.map.get(ev) {
-            event_buffer.push((action, ButtonAction::Held));
-        }
-    }
-
-    let events: Vec<ActionEvent<ButtonAction>> = event_buffer
-        .iter()
-        .map(|v| ActionEvent::<ButtonAction> {
-            action: *v.0,
-            data: v.1,
-        })
-        .collect();
-    button_event_writer.send_batch(events);
 }
 
 // can't see a reason to support remapping mouselook lol
@@ -209,19 +176,21 @@ pub struct InputPlugin;
 
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<ActionEvent<ButtonAction>>();
-        app.insert_resource(KeyActionMap::default());
         app.insert_resource(KeyAxisMap::default());
-        app.insert_resource(MouseButtonActionMap::default());
+        app.insert_resource(InputButtonActionMap::default());
         app.insert_resource(InputAxes::default());
+        app.insert_resource(InputButtons::default());
         app.add_systems(
             Update,
-            (sys_clear_axes, (
-                sys_process_mouse_inputs,
-                sys_process_keycode_inputs,
-                sys_process_keyboard_axes,
-                sys_get_mouselook,
-            )).chain()
+            (
+                sys_clear_axes,
+                (
+                    sys_process_buttons,
+                    sys_process_keyboard_axes,
+                    sys_get_mouselook,
+                ),
+            )
+                .chain()
                 .in_set(InputSystemSet),
         );
     }
@@ -242,15 +211,8 @@ mod testing {
             .unwrap();
         button_input.press(KeyCode::Space);
         app.update();
-        let events: Vec<ActionEvent<ButtonAction>> = app
-            .world
-            .get_resource_mut::<Events<ActionEvent<ButtonAction>>>()
-            .unwrap()
-            .drain()
-            .collect();
-        assert_eq!(events.len(), 1);
-        assert!(events[0].data == ButtonAction::Held);
-        assert!(events[0].action == Action::Jump);
+        let mut button_state = app.world.get_resource_mut::<InputButtons>().unwrap();
+        assert!(button_state.get_button_state(Action::Jump) == ButtonState::Held);
     }
 
     #[test]
