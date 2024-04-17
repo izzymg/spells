@@ -53,18 +53,6 @@ impl<'w, 's> HealthQuery<'w, 's> {
     }
 }
 
-fn sys_bench_start(mut timing: ResMut<TimingResource>) {
-    timing.processing_time = Instant::now();
-}
-
-fn sys_bench_fin(timing: Res<TimingResource>) {
-    log::info!(
-        "bench processing end: took {}ms ({}us)",
-        timing.processing_time.elapsed().as_millis(),
-        timing.processing_time.elapsed().as_micros()
-    );
-}
-
 /// Apply damage events with respect to active target auras.
 fn sys_process_damage_effects(
     effect_events: Res<Events<events::EffectQueueEvent>>,
@@ -123,11 +111,9 @@ impl Plugin for EffectPlugin {
         app.add_systems(
             FixedUpdate,
             (
-                sys_bench_start,
                 sys_process_damage_effects,
                 sys_process_aura_effects,
                 sys_drain_effect_evs,
-                sys_bench_fin,
             )
                 .chain()
                 .in_set(ServerSets::EffectProcessing),
