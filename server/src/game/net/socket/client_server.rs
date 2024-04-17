@@ -27,8 +27,6 @@ pub enum ClientValidationError {
     ErrInvalidHeader,
 }
 
-impl std::error::Error for ClientValidationError {}
-
 impl Display for ClientValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -269,7 +267,7 @@ mod tests {
             let mut first_response = [0; lib_spells::SERVER_HEADER.len()];
             stream.read_exact(&mut first_response).unwrap();
             assert_eq!(lib_spells::SERVER_HEADER.as_bytes(), first_response);
-            stream.write(lib_spells::SERVER_HEADER.as_bytes()).unwrap();
+            stream.write_all(lib_spells::SERVER_HEADER.as_bytes()).unwrap();
         };
 
         connect();
