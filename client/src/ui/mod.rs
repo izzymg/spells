@@ -11,12 +11,15 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
-            Update,
-            (
-                main_menu_view::sys_build_menus,
-                main_menu_view::sys_cleanup_menu_items,
-            ),
+            OnEnter(GameStates::MainMenu),
+            main_menu_view::sys_create_main_menu,
         );
+        app.add_systems(
+            OnExit(GameStates::MainMenu),
+            main_menu_view::sys_cleanup_main_menu,
+        );
+        app.insert_resource(main_menu_control::ConnectionStatus::default());
+        app.add_event::<main_menu_control::ConnectEvent>();
         app.add_systems(
             Update,
             (
@@ -24,27 +27,19 @@ impl Plugin for UiPlugin {
                 main_menu_view::sys_update_status_text,
                 main_menu_control::sys_menu_connect_ev,
                 main_menu_control::sys_update_connection_status,
-            )
-                .in_set(GameStates::Menu),
-        );
-        app.insert_resource(main_menu_control::ConnectionStatus::default());
-        app.add_event::<main_menu_control::ConnectEvent>();
-        app.add_systems(
-            Update,
-            (
                 widgets::sys_button_interaction,
                 widgets::sys_text_input_chars,
                 widgets::sys_text_input_deletions,
             )
-                .in_set(GameStates::Menu),
+            .run_if(in_state(GameStates::MainMenu))
         );
         app.add_systems(
-            PostUpdate,
+            Update,
             (
                 game_view::sys_add_casting_ui,
                 game_view::sys_render_casters_ui,
             )
-                .in_set(GameStates::Game),
+            .run_if(in_state(GameStates::Game))
         );
     }
 }

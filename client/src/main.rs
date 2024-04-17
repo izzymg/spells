@@ -1,26 +1,26 @@
+pub mod controls;
+pub mod editor;
 pub mod game;
+pub mod input;
 pub mod render;
 pub mod ui;
 pub mod window;
 pub mod world_connection;
-pub mod editor;
-pub mod controls;
 
 use bevy::{log::LogPlugin, prelude::*};
 use std::{env, error::Error};
 
-#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(States, Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub enum GameStates {
-    Menu,
+    #[default]
+    MainMenu,
     Game,
 }
-
-#[derive(Resource)]
-pub struct GameState(pub GameStates);
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let mut app = App::new();
+    app.init_state::<GameStates>();
 
     // Diagnostics
     #[cfg(debug_assertions)]
@@ -49,15 +49,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         ..Default::default()
     }));
 
-    app.insert_resource(GameState(GameStates::Menu));
-    app.add_plugins((render::RenderPlugin, window::WindowPlugin, ui::UiPlugin));
-    app.configure_sets(
-        Update,
-        (
-            GameStates::Menu.run_if(|s: Res<GameState>| s.0 == GameStates::Menu),
-            GameStates::Game.run_if(|s: Res<GameState>| s.0 == GameStates::Game),
-        ),
-    );
+    app.add_plugins((
+        input::InputPlugin,
+        render::RenderPlugin,
+        window::WindowPlugin,
+        ui::UiPlugin,
+    ));
 
     if let Some(mode) = args.get(1) {
         match mode.as_str() {
@@ -65,14 +62,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 app.add_plugins(editor::EditorPlugin);
             }
             _ => {
-                println!("unrecognised: {}", mode)
+                panic!("unrecognised: {}", mode)
             }
         }
     } else {
-        app.add_plugins((
-            world_connection::WorldConnectionPlugin,
-            game::GamePlugin,
-        ));
+        app.add_plugins((world_connection::WorldConnectionPlugin, game::GamePlugin));
     }
     app.run();
     Ok(())

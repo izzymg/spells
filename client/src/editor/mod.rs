@@ -1,5 +1,5 @@
-use crate::{controls::free_cam, render, GameState, GameStates};
-use bevy::{input, log, prelude::*};
+use crate::{controls::free_cam, input, render, GameStates};
+use bevy::{log, prelude::*};
 
 #[derive(Resource, Default)]
 struct PlacePreview(render::Voxel);
@@ -36,10 +36,9 @@ fn sys_add_terrain(
     place_preview: ResMut<PlacePreview>,
     mut editor_terrain: ResMut<EditorTerrain>,
     mut terrain_event_send: EventWriter<render::GenerateTerrainEvent>,
-    mouse_buttons: Res<input::ButtonInput<input::mouse::MouseButton>>,
+    mut button_state: ResMut<input::ActionButtons>,
 ) {
-    if mouse_buttons.just_released(MouseButton::Left) {
-        log::info!("checking: {}", place_preview.0);
+    if button_state.get_button_state(input::Action::Primary) == input::ButtonState::Pressed {
         if let Some(i) = editor_terrain.0.find(place_preview.0) {
             editor_terrain.0.remove(i);
         } else {
@@ -54,8 +53,11 @@ fn sys_add_terrain(
 pub struct EditorPlugin;
 impl Plugin for EditorPlugin {
     fn build(&self, app: &mut App) {
+
+        // push straight into Game to avoid the menu spawning
+        app.insert_state(GameStates::Game);
+
         app.add_plugins(free_cam::FreeCameraPlugin);
-        app.world.get_resource_mut::<GameState>().unwrap().0 = GameStates::Game;
         app.insert_resource(EditorTerrain::default());
         app.insert_resource(PlacePreview::default());
         app.add_systems(Startup, sys_spawn);

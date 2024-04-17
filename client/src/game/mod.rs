@@ -12,7 +12,7 @@ use bevy::{
 };
 use lib_spells::net;
 
-use crate::{world_connection, GameState, GameStates};
+use crate::{world_connection, GameStates};
 /// Maps server entities to our entities
 #[derive(Resource, Debug, Default)]
 struct WorldLocalEntityMap(EntityHashMap<Entity>);
@@ -46,14 +46,14 @@ impl GameCameraBundle {
 }
 
 fn sys_handle_world_messages(
-    mut game_state: ResMut<GameState>,
     world_conn: Res<world_connection::WorldConnection>,
+    mut next_game_state: ResMut<NextState<GameStates>>,
 ) {
     // todo: conn and message might need to be different resources
     if world_conn.is_changed() {
         if let Some(world_connection::WorldConnectionMessage::Error(err)) = &world_conn.message {
             log::info!("kicking back to menu: {}", err);
-            game_state.0 = GameStates::Menu;
+            next_game_state.set(GameStates::MainMenu);
         }
     }
 }
@@ -160,12 +160,8 @@ fn sys_handle_world_state(
 /// Spawn in the basic game world objects when the game state changes.
 fn sys_spawn_game_world(
     mut commands: Commands,
-    game_state: Res<GameState>,
     mut server_client_map: ResMut<WorldLocalEntityMap>,
 ) {
-    if !(game_state.is_changed() && game_state.0 == GameStates::Game) {
-        return;
-    }
     log::info!("spawning game world");
     commands.spawn(GameCameraBundle::new());
     server_client_map.0.clear();
@@ -173,13 +169,9 @@ fn sys_spawn_game_world(
 
 fn sys_cleanup_game_world(
     mut commands: Commands,
-    game_state: Res<GameState>,
     go_query: Query<Entity, With<GameObject>>,
     mut server_client_map: ResMut<WorldLocalEntityMap>,
 ) {
-    if !(game_state.is_changed() && game_state.0 != GameStates::Game) {
-        return;
-    }
     log::info!("cleaning up game world");
     for entity in go_query.iter() {
         commands.entity(entity).despawn_recursive();
@@ -191,18 +183,13 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(WorldLocalEntityMap::default());
+        app.add_systems(OnEnter(GameStates::Game), sys_spawn_game_world);
+        app.add_systems(OnExit(GameStates::Game), sys_cleanup_game_world);
         app.add_systems(
             Update,
-            (
-                sys_spawn_game_world,
-                (
-                    sys_handle_world_messages,
-                    sys_handle_world_state,
-                    sys_cleanup_game_world,
-                )
-                    .chain(),
-            )
-                .in_set(GameStates::Game),
+            (sys_handle_world_messages, sys_handle_world_state)
+                .chain()
+                .run_if(in_state(GameStates::Game)),
         );
     }
 }

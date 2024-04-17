@@ -17,3 +17,4 @@ opt-level = 3
 bevy = { version = "0.13.1", default-features = true, features = ["dynamic_linking"] }
 iyes_perf_ui = "0.2.3"
 lib_spells = { path = "../lib_spells" }
+serde = "1.0.198"
