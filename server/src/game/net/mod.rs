@@ -22,12 +22,12 @@ pub struct VelocityInstant {
     velocity: Vec3,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-struct VelocityError;
-
-impl Display for VelocityError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "velocity error")
+impl VelocityInstant {
+    fn new(timestamp: Instant, velocity: Vec3) -> Self {
+        Self {
+            timestamp,
+            velocity,
+        }
     }
 }
 
@@ -57,8 +57,8 @@ impl TryFrom<u8> for MovementDirection {
 
 impl MovementDirection {
     /// Convert a movement direction to a direction in -z forward y up 3D space.
-    fn to_3d(dir: MovementDirection) -> Vec3 {
-        match dir {
+    fn to_3d(&self) -> Vec3 {
+        match &self {
             MovementDirection::Still => Vec3::ZERO,
             MovementDirection::Forward => Vec3::NEG_Z,
             MovementDirection::Right => Vec3::X,
@@ -91,6 +91,22 @@ impl TryFrom<packet::IncomingPacket> for MovementPacket {
             Err("packet too small")
         }
     }
+}
+
+/// Given packets should belong to a single client, in order of their timestamp
+/// todo: copying these shouldn't be expensive, but check
+fn integrate_movement_packets(
+    position: Vec3,
+    velocity_instant: VelocityInstant,
+    packets: impl Iterator<Item = MovementPacket>,
+) -> (Vec3, VelocityInstant) {
+    packets.fold((position, velocity_instant), |(pos, vel), packet| {
+        let passed = packet.timestamp.saturating_duration_since(vel.timestamp);
+        let dir = packet.direction.to_3d();
+        let n_pos = movement::find_position(pos, dir, passed);
+        let n_vel = VelocityInstant::new(packet.timestamp, dir);
+        (n_pos, n_vel)
+    })
 }
 
 // assumes all packets belong to the same client
@@ -193,6 +209,8 @@ impl Plugin for NetPlugin {
 mod tests {
 
     use super::*;
+    use std::thread;
+    use std::time::Duration;
     #[test]
     fn test_to_movement_packet() {
         let cases = vec![0_u8, 1, 2, 3, 4];
@@ -219,5 +237,36 @@ mod tests {
             payload: fail.to_le_bytes().to_vec(),
         })
         .is_err());
+    }
+
+    #[test]
+    #[ignore] // `Instant` is opaque, thread sleeping test
+    fn test_integrate_velocity() {
+        let accept_margin = 0.001;
+        let starting_velocity_inst = VelocityInstant::new(Instant::now(), Vec3::ZERO);
+        let dir = MovementDirection::Forward;
+        let starting_pos = Vec3::new(1.0, 5.0, 2.0);
+        let duration = Duration::from_millis(3500);
+
+        // order important here
+        thread::sleep(duration);
+        let packets = [
+            MovementPacket {
+                timestamp: Instant::now(),
+                direction: dir,
+            },
+            MovementPacket {
+                timestamp: Instant::now(),
+                direction: MovementDirection::Still,
+            },
+        ];
+
+        let expected_pos = starting_pos + (dir.to_3d() * duration.as_secs_f32());
+        let (pos, _vel) = integrate_movement_packets(
+            starting_pos,
+            starting_velocity_inst,
+            packets.iter().copied(),
+        );
+        assert!(expected_pos.abs_diff_eq(pos, accept_margin));
     }
 }
