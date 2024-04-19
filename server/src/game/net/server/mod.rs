@@ -1,3 +1,5 @@
+mod tcp_stream;
+
 use mio::net::TcpListener;
 use mio::{Events, Interest, Poll, Token};
 use std::collections::HashMap;
@@ -7,7 +9,7 @@ use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 use std::{io, time};
 
-use super::client_stream::ClientStream;
+use tcp_stream::ClientStream;
 
 const SERVER_ADDR: &str = "0.0.0.0:7776";
 const SERVER_TOKEN: Token = Token(0); // uniquely identify TCP listener events
@@ -85,7 +87,7 @@ impl Display for BroadcastError {
     }
 }
 
-pub struct ClientServer {
+pub struct Server {
     listener: TcpListener,
     events: Events,
     poll: Poll,
@@ -95,15 +97,15 @@ pub struct ClientServer {
     next_socket: usize,
 }
 
-impl ClientServer {
-    pub fn create() -> io::Result<ClientServer> {
+impl Server {
+    pub fn create() -> io::Result<Server> {
         println!("binding server to {SERVER_ADDR}");
         let mut listener = TcpListener::bind(SERVER_ADDR.parse().unwrap())?;
         let poll = Poll::new()?;
         poll.registry()
             .register(&mut listener, SERVER_TOKEN, Interest::READABLE)?;
         let events = Events::with_capacity(EVENT_BUFFER_SIZE);
-        Ok(ClientServer {
+        Ok(Server {
             listener,
             poll,
             events,
@@ -243,14 +245,17 @@ impl ClientServer {
 #[cfg(test)]
 mod tests {
     use std::{
-        io::{Read, Write}, net::TcpStream, sync::mpsc, thread,
+        io::{Read, Write},
+        net::TcpStream,
+        sync::mpsc,
+        thread,
     };
 
-    use super::ClientServer;
+    use super::Server;
 
     #[test]
     fn test_incoming_client_recv() {
-        let mut client_getter = ClientServer::create().unwrap();
+        let mut client_getter = Server::create().unwrap();
         // create a client stream
         // create a thread that blocks & fetches our clients
         // assert we grab the server header correctly
@@ -266,11 +271,12 @@ mod tests {
             let mut first_response = [0; lib_spells::SERVER_HEADER.len()];
             stream.read_exact(&mut first_response).unwrap();
             assert_eq!(lib_spells::SERVER_HEADER.as_bytes(), first_response);
-            stream.write_all(lib_spells::SERVER_HEADER.as_bytes()).unwrap();
+            stream
+                .write_all(lib_spells::SERVER_HEADER.as_bytes())
+                .unwrap();
         };
 
         connect();
         connect();
-
     }
 }

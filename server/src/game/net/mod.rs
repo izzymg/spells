@@ -1,11 +1,10 @@
 mod movement;
 mod packet;
-mod socket;
+mod server;
 use crate::game;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool, utils::dbg};
 use lib_spells::{net, shared};
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::sync::mpsc;
 use std::time::Instant;
 use strum_macros::FromRepr;
@@ -179,7 +178,7 @@ pub struct NetPlugin;
 
 impl Plugin for NetPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        let mut client_getter = socket::client_server::ClientServer::create().unwrap();
+        let mut client_getter = server::Server::create().unwrap();
         let (tx, rx) = mpsc::channel();
 
         IoTaskPool::get()
