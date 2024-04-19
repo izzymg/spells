@@ -104,3 +104,7 @@ impl CastingSpell {
         }
     }
 }
+
+/// Unit exists in world space.
+#[derive(Debug, Copy, Component, Clone, Serialize, Deserialize)]
+pub struct Position(pub Vec3);
