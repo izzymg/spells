@@ -1,12 +1,9 @@
-use super::{Outgoing, Token};
+use super::Token;
 
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use std::{io, time};
-
-use bevy::log;
 
 use super::tcp_stream;
 
@@ -36,6 +33,7 @@ impl PendingClient {
         let mut buf = [0_u8; lib_spells::CLIENT_EXPECT.as_bytes().len()];
         self.client.read_fill(&mut buf)?;
         if lib_spells::CLIENT_EXPECT.as_bytes() != buf {
+            dbg!(String::from_utf8(buf.to_vec()).unwrap(), String::from_utf8(lib_spells::CLIENT_EXPECT.as_bytes().to_vec()).unwrap());
             return Err(ClientValidationError::ErrInvalidHeader);
         }
         Ok(())
