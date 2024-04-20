@@ -1,5 +1,6 @@
 /*! TCP server implementation for managing connected game clients */
 
+mod pending_clients;
 mod tcp_stream;
 
 use mio::net::TcpListener;
@@ -22,64 +23,8 @@ const MIN_TICK: Duration = Duration::from_millis(250);
 
 // these should be in a passed in config
 const SERVER_ADDR: &str = "0.0.0.0:7776";
-const PENDING_TIMEOUT: Duration = Duration::from_millis(1000);
 const MAX_INCOMING_BYTES: usize = 6;
 // ^
-
-#[derive(Debug)]
-pub enum ClientValidationError {
-    IO(io::Error),
-    ErrInvalidHeader,
-}
-
-impl Display for ClientValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ClientValidationError::IO(io_err) => {
-                write!(f, "IO error: {}", io_err)
-            }
-            ClientValidationError::ErrInvalidHeader => {
-                write!(f, "invalid header response from client")
-            }
-        }
-    }
-}
-
-impl From<io::Error> for ClientValidationError {
-    fn from(value: io::Error) -> Self {
-        Self::IO(value)
-    }
-}
-
-#[derive(Debug)]
-struct PendingClient {
-    created_at: time::Instant,
-    client: ClientStream,
-}
-
-impl PendingClient {
-    pub fn new(client: ClientStream) -> Self {
-        Self {
-            client,
-            created_at: Instant::now(),
-        }
-    }
-
-    /// has this client been pending for longer than our timeout
-    pub fn is_expired(&self) -> bool {
-        Instant::now().duration_since(self.created_at) > PENDING_TIMEOUT
-    }
-
-    /// read the client stream and return if the response
-    pub fn validate(&mut self) -> Result<(), ClientValidationError> {
-        let mut buf = [0_u8; lib_spells::CLIENT_EXPECT.as_bytes().len()];
-        self.client.read_fill(&mut buf)?;
-        if lib_spells::CLIENT_EXPECT.as_bytes() != buf {
-            return Err(ClientValidationError::ErrInvalidHeader);
-        }
-        Ok(())
-    }
-}
 
 struct BroadcastError {
     token: Token,
@@ -143,12 +88,20 @@ impl Server {
     /// block on event look waiting for new clients, adding them by their token to a map of active cleint
     pub fn event_loop(&mut self) {
         let mut connected_clients: HashMap<Token, ClientStream> = HashMap::default();
-        let mut pending_clients: HashMap<Token, PendingClient> = HashMap::default();
+        let mut pending_clients: pending_clients::PendingClients =
+            pending_clients::PendingClients::default();
 
         loop {
-            self.check_accept(&mut pending_clients);
             self.check_outgoing(&mut connected_clients);
-            self.drop_expired(&mut pending_clients);
+            if let Some(mut new_client) = self.check_accept() {
+                let token = Token(self.next_socket);
+                self.next_socket += 1;
+                new_client.register_to_poll(token, &mut self.poll).unwrap();
+                pending_clients.add_stream(token, new_client);
+            }
+            for mut dead_client in pending_clients.kill_expired() {
+                dead_client.deregister_from_poll(&mut self.poll).unwrap();
+            }
 
             if let Err(poll_err) = self.poll.poll(&mut self.events, Some(MIN_TICK)) {
                 log::warn!("poll error: {}", poll_err);
@@ -158,16 +111,14 @@ impl Server {
             for ev in client_events {
                 let client_token = ev.token();
 
-                if let Some(mut pending_client) = pending_clients.remove(&client_token) {
-                    if self.receive_pending_data(client_token, &mut pending_client) {
-                        pending_clients.insert(client_token, pending_client);
-                    }
-                } else if let Some(mut connected_client) = connected_clients.remove(&client_token) {
+                if let Some(new_client) = pending_clients.try_validate(client_token) {
+                    connected_clients.insert(client_token, new_client);
+                    self.inc_tx.send(Incoming::Joined(client_token)).unwrap();
+                }
+                if let Some(mut connected_client) = connected_clients.remove(&client_token) {
                     if self.receive_connected_data(client_token, &mut connected_client) {
                         connected_clients.insert(client_token, connected_client);
                     }
-                } else {
-                    unreachable!("event from untracked client");
                 }
             }
         }
@@ -190,20 +141,6 @@ impl Server {
         true
     }
 
-    // returns true if the client validated correctly
-    fn receive_pending_data(
-        &self,
-        client_token: Token,
-        pending_client: &mut PendingClient,
-    ) -> bool {
-        if let Ok(()) = pending_client.validate() {
-            log::info!("valid client: {:?}", client_token);
-            self.inc_tx.send(Incoming::Joined(client_token)).unwrap();
-            return true;
-        }
-        false
-    }
-
     /// receive data from the outside world to interact with clients (non-blocking)
     fn check_outgoing(&mut self, connected: &mut HashMap<Token, ClientStream>) {
         match self.out_rx.try_recv() {
@@ -217,8 +154,8 @@ impl Server {
             },
             Err(err) if err == mpsc::TryRecvError::Disconnected => {
                 panic!("receiver died: {}", err)
-            },
-            _ => { }, // empty, we don't care
+            }
+            _ => {} // empty, we don't care
         }
     }
 
@@ -231,74 +168,34 @@ impl Server {
         clients
             .iter_mut()
             .map(|(token, client)| {
-                client
-                    .write_prefixed(data)
-                    .map_err(|error| BroadcastError {
-                        error,
-                        token: *token,
-                    })
+                client.write_prefixed(data).map_err(|error| BroadcastError {
+                    error,
+                    token: *token,
+                })
             })
             .filter_map(|v| v.is_err().then(|| v.unwrap_err()))
             .collect()
     }
 
-    /// remove pending clients that haven't validated within the timeframe
-    fn drop_expired(&mut self, clients: &mut HashMap<Token, PendingClient>) {
-        clients
-            .iter()
-            .filter_map(|(k, v)| v.is_expired().then_some(k))
-            .copied()
-            .collect::<Vec<Token>>()
-            .iter()
-            .for_each(|k| {
-                clients
-                    .remove(k)
-                    .unwrap()
-                    .client
-                    .deregister_from_poll(&mut self.poll)
-                    .unwrap();
-            });
-    }
-
     /// check for new clients and accept them into pending
     /// client value gets dropped if we don't successfully pend them
-    fn check_accept(&mut self, pending_clients: &mut HashMap<Token, PendingClient>) {
-        let (stream, addr) = match self.listener.accept() {
+    fn check_accept(&mut self) -> Option<tcp_stream::ClientStream> {
+        let (stream, _) = match self.listener.accept() {
             Ok(s) => s,
-            Err(_) => return, // would block, just exit
+            Err(_) => return None, // would block, just exit
         };
         let mut client = match ClientStream::new(stream) {
             Ok(client) => client,
             Err(err) => {
                 log::info!("failed to create client stream: {}", err);
-                return;
+                return None;
             }
         };
         if let Err(err) = client.write_header() {
             log::info!("failed to send server header: {}", err);
-            return;
+            return None;
         }
-        match self.pend_new_client(client, pending_clients) {
-            Ok(()) => {
-                log::info!("pending client: {}", addr);
-            }
-            Err(err) => {
-                log::warn!("failed to pend client: {}", err);
-            }
-        }
-    }
-
-    /// allocate an ID for the client and assign them to pending clients
-    fn pend_new_client(
-        &mut self,
-        mut client: ClientStream,
-        pending: &mut HashMap<Token, PendingClient>,
-    ) -> io::Result<()> {
-        let token = Token(self.next_socket);
-        client.register_to_poll(token, &mut self.poll)?;
-        self.next_socket += 1;
-        pending.insert(token, PendingClient::new(client));
-        Ok(())
+        Some(client)
     }
 
     /// connected removals should go through here to notify send channel properly
