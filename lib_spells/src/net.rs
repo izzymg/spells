@@ -45,7 +45,9 @@ gen_state!(
     shared::Aura,
     aura,
     shared::CastingSpell,
-    casting_spell
+    casting_spell,
+    shared::Position,
+    position
 );
 
 /// Maps a set of entities to their component state for network magic.
