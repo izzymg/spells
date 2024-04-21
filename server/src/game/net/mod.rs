@@ -1,12 +1,11 @@
 mod movement;
-mod packet;
 mod server;
 use crate::game;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool, utils::dbg};
 use lib_spells::{net, shared};
 use std::collections::HashMap;
 use std::sync::mpsc;
-use std::time::Instant;
+use server::packet;
 
 type ClientID = u32;
 
@@ -15,7 +14,7 @@ struct ClientEntityMap(HashMap<ClientID, Entity>);
 
 // assumes all packets belong to the same client
 fn sys_parse_client_packets(
-    In((client_id, packets)): In<(ClientID, &[packet::IncomingPacket])>,
+    In((client_id, packets)): In<(ClientID, &[packet::Packet])>,
     client_entity_map: Res<ClientEntityMap>,
     server: NonSend<ServerComms>,
 ) {
@@ -24,16 +23,6 @@ fn sys_parse_client_packets(
         .get(&client_id)
         .expect("clients passed must have a mapped entity");
 
-    let movement_packets: Result<Vec<movement::MovementPacket>, &'static str> = packets
-        .iter()
-        .filter(|p| p.command == packet::PacketCommand::Move)
-        .map(movement::MovementPacket::try_from)
-        .collect();
-
-    match movement_packets {
-        Ok(packets) => {}
-        Err(err) => {}
-    }
 }
 
 fn sys_create_state() -> net::WorldState {

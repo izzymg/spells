@@ -1,9 +1,9 @@
-/*! TCP server /mplementation for managing connected game clients */
+/*! TCP server implementation for managing connected game clients */
 
+pub mod packet;
 mod connected_clients;
 mod pending_clients;
 mod tcp_stream;
-use crate::game::net::packet;
 
 use mio::net::TcpListener;
 use mio::{Events, Interest, Poll};
@@ -27,7 +27,7 @@ const SERVER_ADDR: &str = "0.0.0.0:7776";
 pub enum Incoming {
     Joined(Token),
     Left(Token),
-    Data(Token, packet::IncomingPacket),
+    Data(Token, packet::Packet),
 }
 
 #[derive(Debug)]
@@ -86,7 +86,7 @@ impl Server {
                 pending_clients.add_stream(token, new_client);
             }
             // drop expired pending clients
-            for mut dead_client in pending_clients.kill_expired() {
+            for mut dead_client in pending_clients.remove_expired() {
                 log::info!("dropping expired: {}", dead_client.ip_or_unknown());
                 dead_client.deregister_from_poll(&mut self.poll).unwrap();
             }
@@ -187,7 +187,6 @@ mod tests {
 
     use super::*;
     use mio::net::*;
-    use mio::*;
 
     #[test]
     fn test_incoming_client_recv() {
@@ -199,7 +198,7 @@ mod tests {
         // assert we grab the server header correctly
         // panic the thread if it doesn't process the client
 
-        let server = thread::spawn(move || {
+        thread::spawn(move || {
             server.event_loop();
         });
 
@@ -213,7 +212,6 @@ mod tests {
 
         connect();
         connect();
-        dbg!("exiting");
     }
 
     #[test]
@@ -243,7 +241,6 @@ mod tests {
         println!("write");
         stream.write_all("h".as_bytes()).unwrap();
         println!("write");
-        stream.shutdown(std::net::Shutdown::Both).unwrap();
         handle.join().unwrap();
     }
 }

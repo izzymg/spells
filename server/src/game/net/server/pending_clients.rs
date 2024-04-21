@@ -51,7 +51,8 @@ impl PendingClients {
         self.map.insert(token, pending);
     }
 
-    pub fn kill_expired(&mut self) -> Vec<tcp_stream::ClientStream> {
+    /// Moves all the expired streams out to the caller.
+    pub fn remove_expired(&mut self) -> Vec<tcp_stream::ClientStream> {
         self.map
             .iter()
             .filter_map(|(t, s)| s.is_expired().then_some(t))

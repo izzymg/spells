@@ -1,3 +1,5 @@
+use crate::game::net::server::Token;
+use bevy::prelude::*;
 use std::fmt;
 use std::io;
 use std::time::Instant;
@@ -6,9 +8,78 @@ use strum_macros::FromRepr;
 const MAX_PAYLOAD_SIZE: u8 = 8 + 1; // inclusive of delimiter
 const PACKET_DELIMITER: u8 = 0x3b; // ;
 
+/// Higher level packet of input from a client
+#[derive(Debug, Copy, Clone)]
+pub struct Packet {
+    pub token: Token,
+    pub timestamp: Instant,
+    pub data: PacketData,
+}
+
+impl Packet {
+    pub(super) fn from_incoming(
+        token: Token,
+        incoming: IncomingPacket,
+    ) -> Result<Packet, InvalidPacketError> {
+        let payload = &incoming.payload[..];
+        let data = match incoming.command {
+            PacketCommand::Move => PacketData::Movement(MovementDirection::try_from(payload)?),
+        };
+        Ok(Packet {
+            timestamp: incoming.timestamp,
+            token,
+            data,
+        })
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum PacketData {
+    Movement(MovementDirection),
+}
+
+/// Movement states including no movement, going clockwise from forward.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, FromRepr, Hash)]
+#[repr(u8)]
+pub enum MovementDirection {
+    Still = 0,
+    Forward,
+    Right,
+    Backward,
+    Left,
+}
+
+impl MovementDirection {
+    /// Convert a movement direction to a direction in -z forward y up 3D space.
+    pub fn to_3d(&self) -> Vec3 {
+        match &self {
+            MovementDirection::Still => Vec3::ZERO,
+            MovementDirection::Forward => Vec3::NEG_Z,
+            MovementDirection::Right => Vec3::X,
+            MovementDirection::Backward => Vec3::Z,
+            MovementDirection::Left => Vec3::NEG_X,
+        }
+    }
+}
+
+impl TryFrom<&[u8]> for MovementDirection {
+    type Error = InvalidPacketError;
+    /// Produce a movement direction from a payload.
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        if payload.len() != 1 {
+            return Err(InvalidPacketError::BadMoveDirection);
+        }
+        if let Some(dir) = MovementDirection::from_repr(u8::from_le_bytes([payload[0]])) {
+            Ok(dir)
+        } else {
+            Err(InvalidPacketError::BadMoveDirection)
+        }
+    }
+}
+
 /// Attempts to read a valid size header out of `stream` and returns the size of the rest of the
 /// packet including its delimiter. Errors `MessageSize` if the header is invalid, or io errors.
-pub fn read_packet_header(stream: &mut impl io::Read) -> Result<usize, InvalidPacketError> {
+pub(super) fn read_packet_header(stream: &mut impl io::Read) -> Result<usize, InvalidPacketError> {
     let mut header = [0_u8; 1];
     stream.read_exact(&mut header)?;
     let to_read = u8::from_le_bytes(header);
@@ -20,7 +91,7 @@ pub fn read_packet_header(stream: &mut impl io::Read) -> Result<usize, InvalidPa
 
 /// Attempt to read a packet from the stream into `buf`, returning the contents up to and not including the
 /// delimiter. Errors `BadDelimiter` or io errors. Will panic if buffer is empty.
-pub fn read_packet_contents<'a>(
+pub(super) fn read_packet_contents<'a>(
     stream: &mut impl io::Read,
     buf: &'a mut [u8],
 ) -> Result<&'a [u8], InvalidPacketError> {
@@ -34,8 +105,7 @@ pub fn read_packet_contents<'a>(
 
 #[derive(FromRepr, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
-pub enum PacketCommand {
-    CastSpell,
+pub(super) enum PacketCommand {
     Move,
 }
 
@@ -45,6 +115,7 @@ pub enum InvalidPacketError {
     MessageSize(usize),
     BadDelimiter(u8),
     InvalidPayload,
+    BadMoveDirection,
 }
 
 impl From<io::Error> for InvalidPacketError {
@@ -72,6 +143,9 @@ impl fmt::Display for InvalidPacketError {
             InvalidPacketError::InvalidPayload => {
                 write!(f, "bad payload formatting")
             }
+            InvalidPacketError::BadMoveDirection => {
+                write!(f, "bad movement direction")
+            }
         }
     }
 }
@@ -86,7 +160,7 @@ fn pull_command_from_data(data: &[u8]) -> Option<(PacketCommand, &[u8])> {
     }
 }
 
-// Remove and parse a client stamp from the start of`data`
+// Remove and parse a client stamp from the start of `data`
 fn pull_stamp_from_data(data: &[u8]) -> Option<(u8, &[u8])> {
     if let Some((stamp_bytes, rest)) = data.split_first() {
         Some((u8::from_le_bytes([*stamp_bytes]), rest))
@@ -95,8 +169,9 @@ fn pull_stamp_from_data(data: &[u8]) -> Option<(u8, &[u8])> {
     }
 }
 
+/// Lower level incoming payload
 #[derive(Debug)]
-pub struct IncomingPacket {
+pub(super) struct IncomingPacket {
     pub timestamp: Instant,
     pub command: PacketCommand,
     pub stamp: u8,

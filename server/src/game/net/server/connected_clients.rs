@@ -22,6 +22,7 @@ impl Display for BroadcastError {
 #[derive(Default)]
 pub struct ConnectedClients {
     map: HashMap<Token, tcp_stream::ClientStream>,
+    stamps: HashMap<Token, u8>,
 }
 
 impl ConnectedClients {
@@ -50,7 +51,7 @@ impl ConnectedClients {
     pub fn try_receive(
         &mut self,
         token: Token,
-    ) -> Result<Option<packet::IncomingPacket>, packet::InvalidPacketError> {
+    ) -> Result<Option<packet::Packet>, packet::InvalidPacketError> {
         let client = match self.map.get_mut(&token) {
             Some(client) => client,
             None => {
@@ -61,7 +62,10 @@ impl ConnectedClients {
         let size = packet::read_packet_header(client)?;
         let mut buf = vec![0_u8; size];
         let contents = packet::read_packet_contents(client, &mut buf)?;
-        let packet: packet::IncomingPacket = contents.try_into()?;
+        let inc_packet: packet::IncomingPacket = contents.try_into()?;
+        // store the most recently read packet stamp so we can re-transmit to the client later
+        self.stamps.insert(token, inc_packet.stamp);
+        let packet = packet::Packet::from_incoming(token, inc_packet)?;
         Ok(Some(packet))
     }
 }
