@@ -26,7 +26,7 @@ fn sys_parse_client_packets(
 
     let movement_packets: Result<Vec<movement::MovementPacket>, &'static str> = packets
         .iter()
-        .filter(|p| p.command == packet::PacketCommand::Velocity)
+        .filter(|p| p.command == packet::PacketCommand::Move)
         .map(movement::MovementPacket::try_from)
         .collect();
 

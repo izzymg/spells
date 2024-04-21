@@ -130,7 +130,7 @@ mod test {
         for case in cases {
             let packet = packet::IncomingPacket {
                 timestamp: Instant::now(),
-                command: packet::PacketCommand::Velocity,
+                command: packet::PacketCommand::Move,
                 stamp: 0,
                 payload: case.to_le_bytes().to_vec(),
             };
@@ -143,7 +143,7 @@ mod test {
         }
         assert!(MovementPacket::try_from(&packet::IncomingPacket {
             timestamp: Instant::now(),
-            command: packet::PacketCommand::Velocity,
+            command: packet::PacketCommand::Move,
             stamp: 0,
             payload: fail.to_le_bytes().to_vec(),
         })

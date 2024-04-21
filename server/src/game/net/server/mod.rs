@@ -3,10 +3,11 @@
 mod connected_clients;
 mod pending_clients;
 mod tcp_stream;
+use crate::game::net::packet;
 
 use mio::net::TcpListener;
-pub use mio::Token;
 use mio::{Events, Interest, Poll};
+pub use mio::Token;
 
 use std::io;
 use std::sync::mpsc;
@@ -26,7 +27,7 @@ const SERVER_ADDR: &str = "0.0.0.0:7776";
 pub enum Incoming {
     Joined(Token),
     Left(Token),
-    Data(Token, Vec<u8>),
+    Data(Token, packet::IncomingPacket),
 }
 
 #[derive(Debug)]
@@ -139,12 +140,12 @@ impl Server {
                     for err in clients.broadcast(&data).iter() {
                         log::info!("{}", err.error);
                         clients.remove(err.token);
-                        self.inc_tx.send(Incoming::Left(err.token));
+                        self.inc_tx.send(Incoming::Left(err.token)).unwrap();
                     }
                 }
                 Outgoing::Kick(token) => {
                     clients.remove(token);
-                    self.inc_tx.send(Incoming::Left(token));
+                    self.inc_tx.send(Incoming::Left(token)).unwrap();
                 }
             },
             Err(err) if err == mpsc::TryRecvError::Disconnected => {
@@ -203,7 +204,8 @@ mod tests {
         });
 
         let connect = || {
-            let mut stream = TcpStream::connect(SERVER_ADDR.parse().unwrap()).unwrap();
+            // use a std stream so it blocks
+            let mut stream = std::net::TcpStream::connect(SERVER_ADDR).unwrap();
             let mut first_response = [0; lib_spells::SERVER_HEADER.len()];
             stream.read_exact(&mut first_response).unwrap();
             assert_eq!(lib_spells::SERVER_HEADER.as_bytes(), first_response);
