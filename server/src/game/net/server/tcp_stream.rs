@@ -1,5 +1,5 @@
 use std::io::{self, Read, Write};
-
+use bevy::log;
 use mio::{Interest, Token};
 
 #[derive(Debug)]
@@ -20,36 +20,20 @@ impl ClientStream {
         }
     }
 
-    pub fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
-        println!(
-            "client stream write {}: {} bytes",
-            self.ip_or_unknown(),
-            data.len(),
-        );
-        self.stream.write_all(data)
-    }
-
-    /// send a 4 byte LE prefix length header then write the data
+    /// prefix a 4 byte LE length header then write the data
     pub fn write_prefixed(&mut self, data: &[u8]) -> io::Result<usize> {
         let size_prefix: u32 = data.len() as u32;
-        let header_written = self.stream.write(&size_prefix.to_le_bytes())?;
-        let data_written = self.stream.write(data)?;
+        let header_written = self.write(&size_prefix.to_le_bytes())?;
+        let data_written = self.write(data)?;
         Ok(header_written + data_written)
     }
 
+    /// write the server header
     pub fn write_header(&mut self) -> io::Result<()> {
         self.write_all(lib_spells::SERVER_HEADER.as_bytes())
     }
 
-    pub fn read_fill(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.stream.read(buf)
-    }
-
-    pub fn register_to_poll(
-        &mut self,
-        token: Token,
-        poll: &mut mio::Poll,
-    ) -> io::Result<()> {
+    pub fn register_to_poll(&mut self, token: Token, poll: &mut mio::Poll) -> io::Result<()> {
         poll.registry().register(
             &mut self.stream,
             token,
@@ -62,9 +46,25 @@ impl ClientStream {
     }
 }
 
+impl Read for ClientStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.stream.read(buf)
+    }
+}
+
+impl Write for ClientStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.stream.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.stream.flush()
+    }
+}
+
 impl Drop for ClientStream {
     fn drop(&mut self) {
-        println!("dropped client: {}", self.ip_or_unknown());
+        log::info!("dropped client: {}", self.ip_or_unknown());
     }
 }
 

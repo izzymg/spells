@@ -1,4 +1,4 @@
-/*! TCP server implementation for managing connected game clients */
+/*! TCP server /mplementation for managing connected game clients */
 
 mod connected_clients;
 mod pending_clients;
@@ -8,7 +8,6 @@ use mio::net::TcpListener;
 pub use mio::Token;
 use mio::{Events, Interest, Poll};
 
-use std::collections::HashMap;
 use std::io;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -21,7 +20,6 @@ const MIN_TICK: Duration = Duration::from_millis(100);
 
 // these should be in a passed in config
 const SERVER_ADDR: &str = "0.0.0.0:7776";
-const MAX_INCOMING_BYTES: usize = 6;
 // ^
 
 #[derive(Debug)]
@@ -85,7 +83,6 @@ impl Server {
                 new_client.register_to_poll(token, &mut self.poll).unwrap();
                 log::info!("pending client: {}", new_client.ip_or_unknown());
                 pending_clients.add_stream(token, new_client);
-                
             }
             // drop expired pending clients
             for mut dead_client in pending_clients.kill_expired() {
@@ -103,29 +100,31 @@ impl Server {
 
                 if let Some(new_client) = pending_clients.try_validate(client_token) {
                     // validate if it's incoming pending data
-                    log::info!("connected client {}: {}", client_token.0, new_client.ip_or_unknown());
+                    log::info!(
+                        "connected client {}: {}",
+                        client_token.0,
+                        new_client.ip_or_unknown()
+                    );
                     connected_clients.add(client_token, new_client);
                     self.inc_tx.send(Incoming::Joined(client_token)).unwrap();
                 } else {
                     // receive from non-pending
-                    let mut buf = [0_u8; MAX_INCOMING_BYTES];
-                    match connected_clients.try_receive(client_token, &mut buf) {
-                        Ok(read) if read > 0 => {
-                            self.inc_tx
-                                .send(Incoming::Data(client_token, buf.to_vec())).unwrap();
+                    match connected_clients.try_receive(client_token) {
+                        Ok(Some(buf)) => {
+                            self.inc_tx.send(Incoming::Data(client_token, buf)).unwrap();
                         }
                         Err(err) => {
                             log::info!("client {} errored out: {}", client_token.0, err);
+                            connected_clients.remove(client_token);
                             self.inc_tx.send(Incoming::Left(client_token)).unwrap();
                         }
                         _ => {}
                     }
                 }
 
-
                 if ev.is_read_closed() {
                     log::info!("client {} quit", client_token.0);
-                    connected_clients.remove(client_token); 
+                    connected_clients.remove(client_token);
                     self.inc_tx.send(Incoming::Left(client_token)).unwrap();
                 }
             }
@@ -137,10 +136,15 @@ impl Server {
         match self.out_rx.try_recv() {
             Ok(outgoing) => match outgoing {
                 Outgoing::Broadcast(data) => {
-                    clients.broadcast(&data);
+                    for err in clients.broadcast(&data).iter() {
+                        log::info!("{}", err.error);
+                        clients.remove(err.token);
+                        self.inc_tx.send(Incoming::Left(err.token));
+                    }
                 }
                 Outgoing::Kick(token) => {
                     clients.remove(token);
+                    self.inc_tx.send(Incoming::Left(token));
                 }
             },
             Err(err) if err == mpsc::TryRecvError::Disconnected => {
@@ -170,16 +174,6 @@ impl Server {
         }
         Some(client)
     }
-
-    /// connected removals should go through here to notify send channel properly
-    fn drop_connected_client(
-        &mut self,
-        client: Token,
-        connected_clients: &mut HashMap<Token, tcp_stream::ClientStream>,
-    ) -> Option<tcp_stream::ClientStream> {
-        self.inc_tx.send(Incoming::Left(client)).unwrap();
-        connected_clients.remove(&client)
-    }
 }
 
 #[cfg(test)]
@@ -190,9 +184,9 @@ mod tests {
         thread,
     };
 
+    use super::*;
     use mio::net::*;
     use mio::*;
-    use super::*;
 
     #[test]
     fn test_incoming_client_recv() {
@@ -232,12 +226,12 @@ mod tests {
 
         let mut stream = TcpStream::connect(SERVER_ADDR.parse().unwrap()).unwrap();
         stream.set_nodelay(true).unwrap();
-        stream.write_all(lib_spells::CLIENT_EXPECT.as_bytes()).unwrap();
+        stream
+            .write_all(lib_spells::CLIENT_EXPECT.as_bytes())
+            .unwrap();
 
-        std::thread::spawn(move || {
-            loop {
+        std::thread::spawn(move || loop {
             dbg!(inc_rx.recv().unwrap());
-            }
         });
 
         let sleep = Duration::from_millis(1000);

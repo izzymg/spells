@@ -3,7 +3,7 @@ use super::Token;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::{Duration, Instant};
-use std::{io, time};
+use std::{io::{self, Read}, time};
 
 use super::tcp_stream;
 
@@ -31,7 +31,7 @@ impl PendingClient {
     /// read the client stream and return if the response
     pub fn validate(&mut self) -> Result<(), ClientValidationError> {
         let mut buf = [0_u8; lib_spells::CLIENT_EXPECT.as_bytes().len()];
-        self.client.read_fill(&mut buf)?;
+        self.client.read_exact(&mut buf)?;
         if lib_spells::CLIENT_EXPECT.as_bytes() != buf {
             dbg!(String::from_utf8(buf.to_vec()).unwrap(), String::from_utf8(lib_spells::CLIENT_EXPECT.as_bytes().to_vec()).unwrap());
             return Err(ClientValidationError::ErrInvalidHeader);
