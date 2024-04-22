@@ -52,7 +52,7 @@ impl PendingClients {
     }
 
     pub fn remove_client(&mut self, token: Token) -> Option<tcp_stream::ClientStream> {
-        Some(self.map.get(&token)?.stream)
+        Some(self.map.remove(&token)?.stream)
     }
 
     /// Moves all the expired streams out to the caller.
@@ -71,7 +71,7 @@ impl PendingClients {
     /// bad. If successful, pops the client out of the pending list and returns the underlying
     /// stream. Returns Ok(None) if there was no client at the given token.
     pub fn try_validate(&mut self, token: Token) -> Result<Option<tcp_stream::ClientStream>, ClientValidationError> {
-        let mut stream = match self.map.get(&token) {
+        let mut stream = match self.map.get_mut(&token) {
             Some(stream) => stream,
             None => { return Ok(None) }
         };

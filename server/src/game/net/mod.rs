@@ -82,12 +82,12 @@ impl Plugin for NetPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         let (broadcast_tx, broadcast_rx) = mpsc::channel();
         let (incoming_tx, incoming_rx) = mpsc::channel();
-        let mut server = server::Server::create(incoming_tx, broadcast_rx).unwrap();
+        let mut server = server::Server::create().unwrap();
 
         IoTaskPool::get()
             .spawn(async move {
                 log::debug!("client event loop task spawned");
-                server.event_loop();
+                server.event_loop(incoming_tx, broadcast_rx);
             })
             .detach();
 
