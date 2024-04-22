@@ -1,23 +1,6 @@
 use super::{tcp_stream, Token};
 use crate::game::net::packet;
 use std::collections::HashMap;
-use std::fmt::Display;
-use std::io;
-
-pub struct BroadcastError {
-    pub token: Token,
-    pub error: io::Error,
-}
-
-impl Display for BroadcastError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "broadcast failure on client ({}): {}",
-            self.token.0, self.error
-        )
-    }
-}
 
 #[derive(Default)]
 pub struct ConnectedClients {
@@ -34,16 +17,18 @@ impl ConnectedClients {
         self.map.remove(&token)
     }
 
-    pub fn broadcast(&mut self, data: &[u8]) -> Vec<BroadcastError> {
+    pub fn get_all(&self) -> Vec<Token> {
+        self.map.keys().copied().collect()
+    }
+
+    /// returns all errors for associated client tokens
+    pub fn broadcast(&mut self, clients: &[Token], data: &[u8]) -> Vec<(Token, std::io::Error)> {
         self.map
             .iter_mut()
-            .map(|(token, client)| {
-                client.write_prefixed(data).map_err(|error| BroadcastError {
-                    error,
-                    token: *token,
-                })
+            .filter_map(|(token, client)| {
+                let res = client.write_prefixed(data);
+                res.is_err().then(|| (*token, res.unwrap_err()))
             })
-            .filter_map(|v| v.is_err().then(|| v.unwrap_err()))
             .collect()
     }
 

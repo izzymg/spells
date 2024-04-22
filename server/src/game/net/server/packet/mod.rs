@@ -51,7 +51,7 @@ pub enum MovementDirection {
 
 impl MovementDirection {
     /// Convert a movement direction to a direction in -z forward y up 3D space.
-    pub fn to_3d(&self) -> Vec3 {
+    pub fn to_3d(self) -> Vec3 {
         match &self {
             MovementDirection::Still => Vec3::ZERO,
             MovementDirection::Forward => Vec3::NEG_Z,
