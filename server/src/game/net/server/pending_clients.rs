@@ -9,13 +9,37 @@ use super::tcp_stream;
 
 const PENDING_TIMEOUT: Duration = Duration::from_millis(1000);
 
+pub enum ClientValidationError {
+    IO(io::Error),
+    BadPassword,
+}
+
+impl Display for ClientValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClientValidationError::IO(io_err) => {
+                write!(f, "IO error: {}", io_err)
+            }
+            ClientValidationError::BadPassword => {
+                write!(f, "wrong password")
+            }
+        }
+    }
+}
+
+impl From<io::Error> for ClientValidationError {
+    fn from(value: io::Error) -> Self {
+        Self::IO(value)
+    }
+}
+
 #[derive(Debug)]
-pub struct PendingClient {
+struct TimedClient {
     created_at: time::Instant,
     stream: tcp_stream::ClientStream,
 }
 
-impl PendingClient {
+impl TimedClient {
     pub fn new(client: tcp_stream::ClientStream) -> Self {
         Self {
             stream: client,
@@ -27,27 +51,17 @@ impl PendingClient {
     pub fn is_expired(&self) -> bool {
         Instant::now().duration_since(self.created_at) > PENDING_TIMEOUT
     }
-
-    /// read the client stream and return if the response
-    pub fn validate(&mut self) -> Result<(), ClientValidationError> {
-        let mut buf = [0_u8; lib_spells::CLIENT_EXPECT.as_bytes().len()];
-        self.stream.read_exact(&mut buf)?;
-        if lib_spells::CLIENT_EXPECT.as_bytes() != buf {
-            dbg!(String::from_utf8(buf.to_vec()).unwrap(), String::from_utf8(lib_spells::CLIENT_EXPECT.as_bytes().to_vec()).unwrap());
-            return Err(ClientValidationError::ErrInvalidHeader);
-        }
-        Ok(())
-    }
 }
 
 #[derive(Default)]
 pub struct PendingClients {
-    map: HashMap<Token, PendingClient>,
+    map: HashMap<Token, TimedClient>,
+    password: String,
 }
 
 impl PendingClients {
     pub fn add_client(&mut self, token: Token, client: tcp_stream::ClientStream) {
-        let pending = PendingClient::new(client);
+        let pending = TimedClient::new(client);
         self.map.insert(token, pending);
     }
 
@@ -66,42 +80,32 @@ impl PendingClients {
             .map(|t| self.map.remove(t).unwrap().stream)
             .collect()
     }
-    
-    /// Tries to read a validation message from the client. Can IO error or the validation can be
-    /// bad. If successful, pops the client out of the pending list and returns the underlying
-    /// stream. Returns Ok(None) if there was no client at the given token.
-    pub fn try_validate(&mut self, token: Token) -> Result<Option<tcp_stream::ClientStream>, ClientValidationError> {
-        let mut stream = match self.map.get_mut(&token) {
-            Some(stream) => stream,
-            None => { return Ok(None) }
-        };
-        match stream.validate() {
-            Ok(()) => Ok(Some(self.map.remove(&token).unwrap().stream)),
-            Err(err) => Err(err)
+   
+    /// Returns `Ok(true)` if a correct password was given. Returns Ok(`false`) if nothing was
+    /// provided and the caller should wait. Bad passwords are errors.
+    pub fn try_read_password(&mut self, token: Token) -> Result<bool, ClientValidationError> {
+        let client = self.map.get_mut(&token).unwrap();
+        match client.stream.try_read_messages() {
+            Ok(messages) if messages.len() == 0 => {
+                Ok(false) 
+            },
+            Ok(messages) => {
+                if self.password.as_bytes() == messages[0] {
+                    return Ok(true)
+                } else {
+                    return Err(ClientValidationError::BadPassword);
+                };
+            },
+            Err(err) => return Err(err.into())
         }
     }
-}
 
-pub enum ClientValidationError {
-    IO(io::Error),
-    ErrInvalidHeader,
-}
+    pub fn has_client(&self, token: Token) -> bool {
+        self.map.contains_key(&token)
+    }
 
-impl Display for ClientValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ClientValidationError::IO(io_err) => {
-                write!(f, "IO error: {}", io_err)
-            }
-            ClientValidationError::ErrInvalidHeader => {
-                write!(f, "invalid header response from client")
-            }
-        }
+    pub fn write_header(&mut self, token: Token) -> io::Result<()> {
+        self.map.get_mut(&token).unwrap().stream.write_header()
     }
 }
 
-impl From<io::Error> for ClientValidationError {
-    fn from(value: io::Error) -> Self {
-        Self::IO(value)
-    }
-}

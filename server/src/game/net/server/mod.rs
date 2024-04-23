@@ -7,7 +7,7 @@ mod tcp_stream;
 
 use mio::net::TcpListener;
 pub use mio::Token;
-use mio::{net::TcpStream, Events, Interest, Poll, Registry};
+use mio::{event::Event, net::TcpStream, Events, Interest, Poll, Registry};
 
 use std::io;
 use std::sync::mpsc;
@@ -28,6 +28,7 @@ struct ConnectionManager {
     out_rx: mpsc::Receiver<Outgoing>,
     connected: connected_clients::ConnectedClients,
     pending: pending_clients::PendingClients,
+    dead: Vec<tcp_stream::ClientStream>,
 }
 
 impl ConnectionManager {
@@ -37,30 +38,43 @@ impl ConnectionManager {
             out_rx,
             connected: connected_clients::ConnectedClients::default(),
             pending: pending_clients::PendingClients::default(),
+            dead: vec![],
         }
     }
 
-    fn broadcast(&mut self, clients: &[Token], data: &[u8], registry: &Registry) {
-        let errors = self.connected.broadcast(&self.connected.get_all(), &data);
-        let interrupted: Vec<Token> = errors
-            .iter()
-            .filter(|(_, err)| err.kind() == io::ErrorKind::Interrupted)
-            .map(|(t, _)| t)
-            .copied().collect();
-        self.broadcast(&interrupted, data, registry);
-        for (token, err) in errors.iter().filter(|(_, err)| (err.kind() != io::ErrorKind::Interrupted) && (err.kind() != io::ErrorKind::WouldBlock)) {
-            log::info!("broadcast failure to client {}: {}", token.0, err);
-            self.kick_client(registry, *token);
+    /// Take ownership of a stream to be managed. Once it's kicked, it'll be available in
+    /// `collect_dead`.
+    pub fn manage_stream(&mut self, token: Token, stream: tcp_stream::ClientStream) -> io::Result<()> {
+        self.pending.add_client(token, stream);
+        Ok(())
+    }
+
+    /// Figure out who an event is for and handle appropriately. Panics if an event was passed for
+    /// a client we don't have.
+    pub fn handle_event(&mut self, event: Event) {
+        let token = event.token();
+        if self.pending.has_client(token) {
+        } else if self.connected.has_client(token) {
+            // connected
         }
     }
 
-    fn check_outgoing(&mut self, registry: &Registry) {
+    pub fn collect_dead<F>(&mut self, f: F) where F: FnOnce(tcp_stream::ClientStream) + Copy {
+        for stream in self.dead.drain(..) {
+            f(stream);
+        }
+    }
+
+    fn broadcast(&mut self, clients: &[Token], data: &[u8]) {
+    }
+
+    fn check_outgoing(&mut self) {
         match self.out_rx.try_recv() {
             Ok(Outgoing::Broadcast(data)) => {
-                self.broadcast(&self.connected.get_all(), &data, registry);
+                self.broadcast(&self.connected.get_all(), &data);
             }
             Ok(Outgoing::Kick(token)) => {
-                self.kick_client(registry, token);
+                self.kick_client(token);
             }
             Err(mpsc::TryRecvError::Disconnected) => {
                 panic!("receiver disconnected");
@@ -69,103 +83,45 @@ impl ConnectionManager {
         }
     }
 
-    /// Returns true if the operation is finished, false if it should be retried
-    fn read_pending_validation(&mut self, registry: &Registry, token: Token) -> bool {
-        match self.pending.try_validate(token) {
-            Ok(None) => true,
-            Ok(Some(mut client)) => {
-                self.connected.add(token, client);
-                self.inc_tx.send(Incoming::Joined(token)).unwrap();
-                true
-            }
+    fn read_pending_validation(&mut self, token: Token) {}
 
-            Err(pending_clients::ClientValidationError::ErrInvalidHeader) => {
-                log::info!("bad header from client {}", token.0);
-                if let Some(mut stream) = self.pending.remove_client(token) {
-                    stream.deregister_from_poll(registry);
-                }
-                true
-            }
-
-            Err(pending_clients::ClientValidationError::IO(ref io_err))
-                if io_err.kind() == io::ErrorKind::WouldBlock =>
-            {
-                true
-            }
-
-            Err(pending_clients::ClientValidationError::IO(ref io_err))
-                if io_err.kind() == io::ErrorKind::Interrupted =>
-            {
-                false
-            }
-
-            Err(pending_clients::ClientValidationError::IO(io_err)) => {
-                log::warn!("pending client io error: {}", io_err);
-                if let Some(mut stream) = self.pending.remove_client(token) {
-                    stream.deregister_from_poll(registry);
-                }
-                true
-            }
-        }
-    }
-
-    /// Returns true if the operation is finished, false if it should be retried
-    fn read_client_packets(&mut self, registry: &Registry, token: Token) -> bool {
+    fn read_client_packets(&mut self, token: Token) {
         match self.connected.try_receive(token) {
-            Ok(Some(packet)) => {
-                self.inc_tx
-                    .send(Incoming::Data(token, packet))
-                    .expect("receiver died");
-                true
-            }
-            Ok(None) => true,
-            Err(packet::InvalidPacketError::IoError(ref io_err))
-                if io_err.kind() == io::ErrorKind::WouldBlock =>
-            {
-                true
-            }
-            Err(packet::InvalidPacketError::IoError(ref io_err))
-                if io_err.kind() == io::ErrorKind::Interrupted =>
-            {
-                false
-            }
-            Err(packet::InvalidPacketError::IoError(io_err)) => {
-                log::warn!("client io error: {}", io_err);
-                self.kick_client(registry, token);
-                true
+            Ok(packets) => {
+                for packet in packets {
+                    self.inc_tx
+                        .send(Incoming::Data(token, packet))
+                        .expect("receiver died");
+                }
             }
             Err(err) => {
-                log::warn!("invalid packet from client {}: {}", token.0, err);
-                self.kick_client(registry, token);
-                true
+                log::warn!("client io error: {}", err);
+                self.kick_client(token);
             }
         }
     }
 
-    fn add_client_to_connected(&mut self, token: Token, client: tcp_stream::ClientStream) {
-        self.connected.add(token, client);
-        self.inc_tx.send(Incoming::Joined(token));
+    /// Moves a client from pending status to connected status
+    fn pending_to_connected(&mut self, token: Token) {
+        if let Some(client) = self.pending.remove_client(token) {
+            self.connected.add_client(token, client);
+            self.inc_tx.send(Incoming::Joined(token));
+        }
     }
 
-    fn kick_client(&mut self, registry: &Registry, token: Token) {
-        if let Some(mut client) = self.connected.remove(token) {
-            client.deregister_from_poll(registry).unwrap();
+    // we don't need to notify above us about non-connected clients
+    // they only care about verified people
+    fn kick_client(&mut self, token: Token) {
+        if let Some(client) = self.connected.remove_client(token) {
             self.inc_tx
                 .send(Incoming::Left(token))
                 .expect("dead receiver");
+            self.dead.push(client);
         }
-    }
 
-    fn begin_pending(
-        &mut self,
-        registry: &Registry,
-        token: Token,
-        stream: TcpStream,
-    ) -> io::Result<()> {
-        let mut client = tcp_stream::ClientStream::new(stream);
-        client.register_to_poll(token, registry)?;
-        self.pending.add_client(token, client);
-        Ok(())
+        if let Some(client) = self.pending.remove_client(token) {
+            self.dead.push(client);
+        }
     }
 
     fn clean_expired_pending(&mut self, registry: &Registry) -> io::Result<()> {
@@ -173,6 +129,23 @@ impl ConnectionManager {
             expired_pending_client.deregister_from_poll(registry)?;
         }
         Ok(())
+    }
+
+    fn try_say_hello(&mut self, token: Token, registry: &Registry) {
+        match self.pending.write_header(token) {
+            Err(ref io_err) if io_err.kind() == io::ErrorKind::Interrupted => {
+                self.try_say_hello(token, registry);
+            }
+            Err(ref io_err) => {
+                log::info!("failed to write header to {}: {}", token.0, io_err);
+                if let Some(mut client) = self.pending.remove_client(token) {
+                    client.deregister_from_poll(registry).unwrap();
+                }
+            }
+            Ok(_) => {
+                log::debug!("wrote client header to {}", token.0);
+            }
+        }
     }
 }
 
