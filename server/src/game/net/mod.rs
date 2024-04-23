@@ -14,11 +14,11 @@ struct ClientEntityMap(HashMap<ClientID, Entity>);
 
 // assumes all packets belong to the same client
 fn sys_parse_client_packets(
-    In((client_id, packets)): In<(ClientID, &[packet::Packet])>,
+    In((client_id, _packets)): In<(ClientID, &[packet::Packet])>,
     client_entity_map: Res<ClientEntityMap>,
-    server: NonSend<ServerComms>,
+    _server: NonSend<ServerComms>,
 ) {
-    let client_entity = *client_entity_map
+    let _client_entity = *client_entity_map
         .0
         .get(&client_id)
         .expect("clients passed must have a mapped entity");

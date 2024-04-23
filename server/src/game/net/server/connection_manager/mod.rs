@@ -159,5 +159,5 @@ impl ConnectionManager {
         }
     }
 
-    fn broadcast(&mut self, clients: &[server::Token], data: &[u8]) {}
+    fn broadcast(&mut self, _clients: &[server::Token], _data: &[u8]) {}
 }

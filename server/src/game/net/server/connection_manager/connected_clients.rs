@@ -26,7 +26,7 @@ impl ConnectedClients {
     }
 
     /// returns all errors for associated client tokens
-    pub fn broadcast(&mut self, clients: &[server::Token], data: &[u8]) -> Vec<(server::Token, std::io::Error)> {
+    pub fn broadcast(&mut self, _clients: &[server::Token], data: &[u8]) -> Vec<(server::Token, std::io::Error)> {
         self.map
             .iter_mut()
             .filter_map(|(token, client)| {
