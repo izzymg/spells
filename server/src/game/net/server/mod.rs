@@ -228,33 +228,4 @@ mod tests {
         connect();
     }
 
-    #[test]
-    #[ignore]
-    fn test_tcp_things() {
-        let (inc_tx, inc_rx) = mpsc::channel();
-        let (_out_tx, out_rx) = mpsc::channel();
-        let mut server = Server::create().unwrap();
-        let handle = std::thread::spawn(move || {
-            server.event_loop(inc_tx, out_rx);
-        });
-
-        let mut stream = TcpStream::connect(SERVER_ADDR.parse().unwrap()).unwrap();
-        stream.set_nodelay(true).unwrap();
-        stream
-            .write_all(lib_spells::CLIENT_EXPECT.as_bytes())
-            .unwrap();
-
-        std::thread::spawn(move || loop {
-            dbg!(inc_rx.recv().unwrap());
-        });
-
-        let sleep = Duration::from_millis(1000);
-        println!("waiting {}s...", sleep.as_secs_f32());
-        thread::sleep(sleep);
-        stream.write_all("abcdefg".as_bytes()).unwrap();
-        println!("write");
-        stream.write_all("h".as_bytes()).unwrap();
-        println!("write");
-        handle.join().unwrap();
-    }
 }
