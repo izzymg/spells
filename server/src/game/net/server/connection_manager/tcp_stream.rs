@@ -1,6 +1,4 @@
 /*! Buffered, message parsing mio TCP stream wrapper */
-use bevy::log;
-use mio::{Interest, Token};
 use std::fmt::Display;
 use std::io::{self, Read, Write};
 
@@ -31,8 +29,10 @@ fn is_would_block(err: &io::Error) -> bool {
     err.kind() == io::ErrorKind::WouldBlock
 }
 
+/// Provides for buffered message read & writes to a `mio` TCP stream.
+/// Methods should not `WouldBlock` but drain, buffer & parse header-prefixed data.
 #[derive(Debug)]
-pub(super) struct ClientStream {
+pub struct ClientStream {
     stream: mio::net::TcpStream,
     read_buffer: Vec<u8>,
     read_bytes: usize,
@@ -57,6 +57,7 @@ impl ClientStream {
         self.stream
     }
 
+    /// Returns all readable messages on the stream.
     pub fn try_read_messages(&mut self) -> io::Result<Vec<Vec<u8>>> {
         let mut messages = vec![];
         if self.read_bytes == 0 {
@@ -83,21 +84,15 @@ impl ClientStream {
                 Ok(n) if n < 1 => return Err(io::ErrorKind::UnexpectedEof.into()),
                 Ok(n) => {
                     let message_len = self.read_buffer[0] as usize;
-                    // we've read at least one whole message
                     let total_read = self.read_bytes + n;
-                    let to_read = message_len + 1; // for the header
-                    // +1 for the header byte
+                    let to_read = message_len + 1;
                     if total_read >= to_read {
                         messages.push(self.read_buffer[1..=message_len].to_vec());
-                        // start again reading messages from here
                         let next_message_bytes = total_read - to_read;
                         self.read_bytes = next_message_bytes;
                         if next_message_bytes > 0 {
-                            // we picked up some of the next message too
-                            let next_message_start = to_read;
-                            let next_message_end = next_message_start + next_message_bytes;
                             let next_message =
-                                &self.read_buffer[next_message_start..next_message_end].to_vec();
+                                &self.read_buffer[to_read..to_read + next_message_bytes].to_vec();
                             self.read_buffer[0..next_message_bytes].copy_from_slice(next_message);
                         }
                     } else {
@@ -130,23 +125,10 @@ impl ClientStream {
         let data_written = self.stream.write(data)?;
         Ok(header_written + data_written)
     }
-
     /// write the server header
     pub fn write_header(&mut self) -> io::Result<()> {
         //self.write(lib_spells::SERVER_HEADER.as_bytes())
         Ok(())
-    }
-
-    pub fn register_to_poll(&mut self, token: Token, registry: &mio::Registry) -> io::Result<()> {
-        registry.register(
-            &mut self.stream,
-            token,
-            Interest::READABLE.add(Interest::WRITABLE),
-        )
-    }
-
-    pub fn deregister_from_poll(&mut self, registry: &mio::Registry) -> io::Result<()> {
-        registry.deregister(&mut self.stream)
     }
 }
 
@@ -209,51 +191,46 @@ mod tests {
         let server = mio::net::TcpListener::bind("127.0.0.1:0".parse().unwrap()).unwrap();
         let server_addr = server.local_addr().unwrap();
 
-        let handle = std::thread::spawn(move || {
-            println!("stream accepting");
+        let (tx, rx) = std::sync::mpsc::channel();
 
+        let handle = std::thread::spawn(move || {
             let stream = loop {
+                tx.send(true).unwrap();
                 match server.accept() {
                     Ok((stream, _)) => break stream,
                     Err(_err) => continue,
                 }
             };
             let mut client_stream = ClientStream::new(stream);
-            println!("test server: accepted conn");
             let mut received = vec![];
             loop {
-                match client_stream.try_read_messages() {
-                    Ok(mut recv_messages) => {
-                        if !recv_messages.is_empty() {
-                            received.append(&mut recv_messages);
-                            println!("appended message");
-                        }
-                        if received.len() == n_messages {
-                            println!("returning");
-                            return received;
-                        }
-                    }
-                    Err(err) => {
-                        println!("READ ERROR: {}", err);
-                    }
+                let mut recv_messages = client_stream.try_read_messages().unwrap();
+                if !recv_messages.is_empty() {
+                    received.append(&mut recv_messages);
+                }
+                if received.len() == n_messages {
+                    return received;
                 }
             }
         });
 
         let mut client = std::net::TcpStream::connect(server_addr).unwrap();
+        rx.recv().unwrap();
         for message in messages.iter() {
             let len = &[message.len() as u8];
             // prefix header
-            let mut written = 1;
             client.write_all(len).unwrap();
             for byte in message.iter() {
-                written += 1;
                 client.write_all(&[*byte]).unwrap();
-                std::thread::sleep(std::time::Duration::from_millis(10));
             }
         }
 
         let res = handle.join().unwrap();
         assert_eq!(res, messages);
+        let strs = res
+            .iter()
+            .map(|b| String::from_utf8(b.to_vec()).unwrap())
+            .collect::<Vec<String>>();
+        dbg!(strs);
     }
 }

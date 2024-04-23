@@ -1,9 +1,8 @@
-use super::Token;
-
+use crate::game::net::server;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::{Duration, Instant};
-use std::{io::{self, Read}, time};
+use std::{io, time};
 
 use super::tcp_stream;
 
@@ -55,17 +54,17 @@ impl TimedClient {
 
 #[derive(Default)]
 pub struct PendingClients {
-    map: HashMap<Token, TimedClient>,
+    map: HashMap<server::Token, TimedClient>,
     password: String,
 }
 
 impl PendingClients {
-    pub fn add_client(&mut self, token: Token, client: tcp_stream::ClientStream) {
+    pub fn add_client(&mut self, token: server::Token, client: tcp_stream::ClientStream) {
         let pending = TimedClient::new(client);
         self.map.insert(token, pending);
     }
 
-    pub fn remove_client(&mut self, token: Token) -> Option<tcp_stream::ClientStream> {
+    pub fn remove_client(&mut self, token: server::Token) -> Option<tcp_stream::ClientStream> {
         Some(self.map.remove(&token)?.stream)
     }
 
@@ -75,7 +74,7 @@ impl PendingClients {
             .iter()
             .filter_map(|(t, s)| s.is_expired().then_some(t))
             .copied()
-            .collect::<Vec<Token>>()
+            .collect::<Vec<server::Token>>()
             .iter()
             .map(|t| self.map.remove(t).unwrap().stream)
             .collect()
@@ -83,28 +82,28 @@ impl PendingClients {
    
     /// Returns `Ok(true)` if a correct password was given. Returns Ok(`false`) if nothing was
     /// provided and the caller should wait. Bad passwords are errors.
-    pub fn try_read_password(&mut self, token: Token) -> Result<bool, ClientValidationError> {
+    pub fn try_read_password(&mut self, token: server::Token) -> Result<bool, ClientValidationError> {
         let client = self.map.get_mut(&token).unwrap();
         match client.stream.try_read_messages() {
-            Ok(messages) if messages.len() == 0 => {
+            Ok(messages) if messages.is_empty() => {
                 Ok(false) 
             },
             Ok(messages) => {
                 if self.password.as_bytes() == messages[0] {
-                    return Ok(true)
+                    Ok(true)
                 } else {
-                    return Err(ClientValidationError::BadPassword);
-                };
+                    Err(ClientValidationError::BadPassword)
+                }
             },
-            Err(err) => return Err(err.into())
+            Err(err) => Err(err.into())
         }
     }
 
-    pub fn has_client(&self, token: Token) -> bool {
+    pub fn has_client(&self, token: server::Token) -> bool {
         self.map.contains_key(&token)
     }
 
-    pub fn write_header(&mut self, token: Token) -> io::Result<()> {
+    pub fn write_header(&mut self, token: server::Token) -> io::Result<()> {
         self.map.get_mut(&token).unwrap().stream.write_header()
     }
 }

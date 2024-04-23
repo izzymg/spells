@@ -1,13 +1,11 @@
 /*! TCP server implementation for managing connected game clients */
 
-mod connected_clients;
 pub mod packet;
-mod pending_clients;
-mod tcp_stream;
+mod connection_manager;
 
 use mio::net::TcpListener;
 pub use mio::Token;
-use mio::{event::Event, net::TcpStream, Events, Interest, Poll, Registry};
+use mio::{Events, Interest, Poll};
 
 use std::io;
 use std::sync::mpsc;
@@ -22,132 +20,6 @@ const MIN_TICK: Duration = Duration::from_millis(100);
 // these should be in a passed in config
 const SERVER_ADDR: &str = "0.0.0.0:7776";
 // ^
-
-struct ConnectionManager {
-    inc_tx: mpsc::Sender<Incoming>,
-    out_rx: mpsc::Receiver<Outgoing>,
-    connected: connected_clients::ConnectedClients,
-    pending: pending_clients::PendingClients,
-    dead: Vec<tcp_stream::ClientStream>,
-}
-
-impl ConnectionManager {
-    pub fn new(inc_tx: mpsc::Sender<Incoming>, out_rx: mpsc::Receiver<Outgoing>) -> Self {
-        Self {
-            inc_tx,
-            out_rx,
-            connected: connected_clients::ConnectedClients::default(),
-            pending: pending_clients::PendingClients::default(),
-            dead: vec![],
-        }
-    }
-
-    /// Take ownership of a stream to be managed. Once it's kicked, it'll be available in
-    /// `collect_dead`.
-    pub fn manage_stream(&mut self, token: Token, stream: tcp_stream::ClientStream) -> io::Result<()> {
-        self.pending.add_client(token, stream);
-        Ok(())
-    }
-
-    /// Figure out who an event is for and handle appropriately. Panics if an event was passed for
-    /// a client we don't have.
-    pub fn handle_event(&mut self, event: Event) {
-        let token = event.token();
-        if self.pending.has_client(token) {
-        } else if self.connected.has_client(token) {
-            // connected
-        }
-    }
-
-    pub fn collect_dead<F>(&mut self, f: F) where F: FnOnce(tcp_stream::ClientStream) + Copy {
-        for stream in self.dead.drain(..) {
-            f(stream);
-        }
-    }
-
-    fn broadcast(&mut self, clients: &[Token], data: &[u8]) {
-    }
-
-    fn check_outgoing(&mut self) {
-        match self.out_rx.try_recv() {
-            Ok(Outgoing::Broadcast(data)) => {
-                self.broadcast(&self.connected.get_all(), &data);
-            }
-            Ok(Outgoing::Kick(token)) => {
-                self.kick_client(token);
-            }
-            Err(mpsc::TryRecvError::Disconnected) => {
-                panic!("receiver disconnected");
-            }
-            _ => {}
-        }
-    }
-
-    fn read_pending_validation(&mut self, token: Token) {}
-
-    fn read_client_packets(&mut self, token: Token) {
-        match self.connected.try_receive(token) {
-            Ok(packets) => {
-                for packet in packets {
-                    self.inc_tx
-                        .send(Incoming::Data(token, packet))
-                        .expect("receiver died");
-                }
-            }
-            Err(err) => {
-                log::warn!("client io error: {}", err);
-                self.kick_client(token);
-            }
-        }
-    }
-
-    /// Moves a client from pending status to connected status
-    fn pending_to_connected(&mut self, token: Token) {
-        if let Some(client) = self.pending.remove_client(token) {
-            self.connected.add_client(token, client);
-            self.inc_tx.send(Incoming::Joined(token));
-        }
-    }
-
-    // we don't need to notify above us about non-connected clients
-    // they only care about verified people
-    fn kick_client(&mut self, token: Token) {
-        if let Some(client) = self.connected.remove_client(token) {
-            self.inc_tx
-                .send(Incoming::Left(token))
-                .expect("dead receiver");
-            self.dead.push(client);
-        }
-
-        if let Some(client) = self.pending.remove_client(token) {
-            self.dead.push(client);
-        }
-    }
-
-    fn clean_expired_pending(&mut self, registry: &Registry) -> io::Result<()> {
-        for mut expired_pending_client in self.pending.remove_expired() {
-            expired_pending_client.deregister_from_poll(registry)?;
-        }
-        Ok(())
-    }
-
-    fn try_say_hello(&mut self, token: Token, registry: &Registry) {
-        match self.pending.write_header(token) {
-            Err(ref io_err) if io_err.kind() == io::ErrorKind::Interrupted => {
-                self.try_say_hello(token, registry);
-            }
-            Err(ref io_err) => {
-                log::info!("failed to write header to {}: {}", token.0, io_err);
-                if let Some(mut client) = self.pending.remove_client(token) {
-                    client.deregister_from_poll(registry).unwrap();
-                }
-            }
-            Ok(_) => {
-                log::debug!("wrote client header to {}", token.0);
-            }
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum Incoming {
@@ -166,8 +38,6 @@ pub struct Server {
     listener: TcpListener,
     events: Events,
     poll: Poll,
-
-    next_socket: usize,
 }
 
 impl Server {
@@ -182,13 +52,66 @@ impl Server {
             listener,
             poll,
             events,
-            next_socket: 1,
         })
     }
 
     /// block on event look waiting for new clients, adding them by their token to a map of active cleint
-    pub fn event_loop(&mut self, inc_tx: mpsc::Sender<Incoming>, out_rx: mpsc::Receiver<Outgoing>) {
-        let manager = ConnectionManager::new(inc_tx, out_rx);
+    pub fn event_loop(
+        &mut self,
+        inc_tx: mpsc::Sender<Incoming>,
+        out_rx: mpsc::Receiver<Outgoing>,
+    ) -> io::Result<()> {
+        let mut manager = connection_manager::ConnectionManager::new(inc_tx, out_rx);
+
+        let mut next_socket = 0_usize;
+        let mut next_token = || {
+            let token = Token(next_socket);
+            next_socket += 1;
+            token
+        };
+
+        loop {
+            self.poll
+                .poll(&mut self.events, Some(MIN_TICK))
+                .expect("poll died");
+
+            manager.tick();
+            manager.collect_dead(|dead| {
+                log::debug!("deregister dead: {}", dead.ip_or_unknown());
+                self.poll
+                    .registry()
+                    .deregister(&mut dead.into_inner())
+                    .expect("poll dead");
+            });
+            for ev in self.events.iter() {
+                match ev.token() {
+                    // new connections inc
+                    SERVER_TOKEN => loop {
+                        let (mut stream, addr) = match self.listener.accept() {
+                            Ok((stream, addr)) => (stream, addr),
+                            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                                break;
+                            }
+                            Err(e) => return Err(e),
+                        };
+
+                        log::info!("got new connection from: {}", addr);
+                        let new_token = next_token();
+                        self.poll
+                            .registry()
+                            .register(
+                                &mut stream,
+                                new_token,
+                                Interest::READABLE.add(Interest::WRITABLE),
+                            )
+                            .unwrap();
+                        manager.manage_stream(new_token, connection_manager::tcp_stream::ClientStream::new(stream));
+                    },
+                    // this is a managed client
+                    _ => manager.handle_event(ev)
+                }
+            }
+        }
     }
 }
 
@@ -227,5 +150,4 @@ mod tests {
         connect();
         connect();
     }
-
 }
