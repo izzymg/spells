@@ -34,6 +34,7 @@ fn is_would_block(err: &io::Error) -> bool {
 #[derive(Debug)]
 pub struct ClientStream {
     stream: mio::net::TcpStream,
+
     read_buffer: Vec<u8>,
     read_bytes: usize,
 }
@@ -55,6 +56,29 @@ impl ClientStream {
 
     pub fn into_inner(self) -> mio::net::TcpStream {
         self.stream
+    }
+
+    /// Try to write all of what's buffered with a length prefix. Returns true if all of the buffer
+    /// was written.
+    #[allow(clippy::unused_io_amount)]
+    pub fn try_write_prefixed(&mut self, buffer: &[u8]) -> io::Result<()> {
+        loop {
+            match self.write_prefixed(buffer) {
+                Ok((n, t)) if n < t => {
+                    return Err(io::ErrorKind::WriteZero.into());
+                }
+                Ok(_) => {
+                    return Ok(());
+                }
+                Err(ref err) if is_would_block(err) => {
+                    return Ok(());
+                }
+                Err(ref err) if is_interrupted(err) => {
+                    continue;
+                }
+                Err(err) => return Err(err),
+            }
+        }
     }
 
     /// Returns all readable messages on the stream.
@@ -118,17 +142,17 @@ impl ClientStream {
         }
     }
 
-    /// prefix a 4 byte LE length header then write the data
-    pub fn write_prefixed(&mut self, data: &[u8]) -> io::Result<usize> {
-        let size_prefix: u32 = data.len() as u32;
-        let header_written = self.stream.write(&size_prefix.to_le_bytes())?;
-        let data_written = self.stream.write(data)?;
-        Ok(header_written + data_written)
-    }
-    /// write the server header
-    pub fn write_header(&mut self) -> io::Result<()> {
-        //self.write(lib_spells::SERVER_HEADER.as_bytes())
-        Ok(())
+    /// write a length header then write the data
+    /// returns (total written, data + header length)
+    fn write_prefixed(&mut self, data: &[u8]) -> io::Result<(usize, usize)> {
+        let header_bytes = (data.len() as u32).to_le_bytes();
+        let mut total_written = 0;
+        total_written += self.stream.write(&header_bytes)?;
+        total_written += self.stream.write(data)?;
+        Ok((
+            total_written,
+            (header_bytes.len() + data.len()),
+        ))
     }
 }
 
@@ -141,22 +165,8 @@ impl Display for ClientStream {
 #[cfg(test)]
 mod tests {
     use mio;
-    use std::mem::size_of;
 
     use super::*;
-
-    #[test]
-    fn test_write_prefixed() {
-        let listener = mio::net::TcpListener::bind("127.0.0.1:0".parse().unwrap()).unwrap();
-        let _unused = mio::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-        let client_stream = listener.accept().unwrap();
-        let mut client_stream = ClientStream::new(client_stream.0);
-
-        let data = b"hello!";
-        let written = client_stream.write_prefixed(data).unwrap();
-        // prefixed should be len + the length of the u32 size header we prefix first
-        assert_eq!(written, data.len() + size_of::<u32>());
-    }
 
     struct FakeReader {
         length: usize,
@@ -232,5 +242,26 @@ mod tests {
             .map(|b| String::from_utf8(b.to_vec()).unwrap())
             .collect::<Vec<String>>();
         dbg!(strs);
+    }
+    #[test]
+    fn test_try_write_prefixed() {
+        let message = "bonguscan".as_bytes();
+        let server = mio::net::TcpListener::bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let server_addr = server.local_addr().unwrap();
+
+        let handle = std::thread::spawn(move || {
+            let stream = loop {
+                match server.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(_err) => continue,
+                }
+            };
+            ClientStream::new(stream).try_write_prefixed(message).unwrap();
+        });
+
+        let mut client = std::net::TcpStream::connect(server_addr).unwrap();
+        handle.join().unwrap();
+        let mut buf = vec![0; message.len()];
+        assert_eq!(message.len() + std::mem::size_of::<u32>(), client.read_to_end(&mut buf).unwrap());
     }
 }

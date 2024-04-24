@@ -103,8 +103,5 @@ impl PendingClients {
         self.map.contains_key(&token)
     }
 
-    pub fn write_header(&mut self, token: server::Token) -> io::Result<()> {
-        self.map.get_mut(&token).unwrap().stream.write_header()
-    }
 }
 

@@ -30,7 +30,7 @@ impl ConnectedClients {
         self.map
             .iter_mut()
             .filter_map(|(token, client)| {
-                let res = client.write_prefixed(data);
+                let res = client.try_write_prefixed(data);
                 res.is_err().then(|| (*token, res.unwrap_err()))
             })
             .collect()

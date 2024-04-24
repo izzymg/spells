@@ -147,17 +147,6 @@ impl ConnectionManager {
         }
     }
 
-    fn try_say_hello(&mut self, token: server::Token) {
-        match self.pending.write_header(token) {
-            Err(ref io_err) => {
-                log::info!("failed to write header to {}: {}", token.0, io_err);
-                self.kick_client(token);
-            }
-            Ok(_) => {
-                log::debug!("wrote client header to {}", token.0);
-            }
-        }
-    }
 
     fn broadcast(&mut self, _clients: &[server::Token], _data: &[u8]) {}
 }
