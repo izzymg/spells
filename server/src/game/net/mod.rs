@@ -76,7 +76,9 @@ impl ServerComms {
     }
 }
 
-pub struct NetPlugin;
+pub struct NetPlugin {
+    pub server_password: Option<String>,
+}
 
 impl Plugin for NetPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
@@ -84,10 +86,11 @@ impl Plugin for NetPlugin {
         let (incoming_tx, incoming_rx) = mpsc::channel();
         let mut server = server::Server::create().unwrap();
 
+        let password = self.server_password.clone();
         IoTaskPool::get()
             .spawn(async move {
                 log::debug!("client event loop task spawned");
-                server.event_loop(incoming_tx, broadcast_rx);
+                server.event_loop(incoming_tx, broadcast_rx, password);
             })
             .detach();
 

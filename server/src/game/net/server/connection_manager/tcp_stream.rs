@@ -58,20 +58,44 @@ impl ClientStream {
         self.stream
     }
 
-    /// Try to write all of what's buffered with a length prefix. Returns true if all of the buffer
-    /// was written.
+    /// Try to write all of what's buffered. Returns true if all of the buffer
+    /// was written. Errors on partial writes.
     #[allow(clippy::unused_io_amount)]
-    pub fn try_write_prefixed(&mut self, buffer: &[u8]) -> io::Result<()> {
+    pub fn try_write(&mut self, buffer: &[u8]) -> io::Result<bool> {
+        loop {
+            match self.stream.write(buffer) {
+                Ok(n) if n < buffer.len() => {
+                    return Err(io::ErrorKind::WriteZero.into());
+                }
+                Ok(_) => {
+                    return Ok(true);
+                }
+                Err(ref err) if is_would_block(err) => {
+                    return Ok(false);
+                }
+                Err(ref err) if is_interrupted(err) => {
+                    continue;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+    }
+
+
+    /// Try to write all of what's buffered with a length prefix. Returns true if all of the buffer
+    /// was written. Errors on partial writes.
+    #[allow(clippy::unused_io_amount)]
+    pub fn try_write_prefixed(&mut self, buffer: &[u8]) -> io::Result<bool> {
         loop {
             match self.write_prefixed(buffer) {
                 Ok((n, t)) if n < t => {
                     return Err(io::ErrorKind::WriteZero.into());
                 }
                 Ok(_) => {
-                    return Ok(());
+                    return Ok(true);
                 }
                 Err(ref err) if is_would_block(err) => {
-                    return Ok(());
+                    return Ok(false);
                 }
                 Err(ref err) if is_interrupted(err) => {
                     continue;

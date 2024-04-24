@@ -18,3 +18,5 @@ bevy = { version = "0.13.1", default-features = false, features = ["multi-thread
 mio = { version = "0.8.11", features = ["os-poll", "net"] }
 lib_spells = { version = "*", path = "../lib_spells" }
 strum_macros = "0.26.2"
+clap = { version = "4.5.4", features = ["derive"] }
+serde = "1.0.198"

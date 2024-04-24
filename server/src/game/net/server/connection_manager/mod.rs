@@ -21,12 +21,13 @@ impl ConnectionManager {
     pub fn new(
         inc_tx: mpsc::Sender<server::Incoming>,
         out_rx: mpsc::Receiver<server::Outgoing>,
+        password: Option<String>,
     ) -> Self {
         Self {
             inc_tx,
             out_rx,
             connected: connected_clients::ConnectedClients::default(),
-            pending: pending_clients::PendingClients::default(),
+            pending: pending_clients::PendingClients::new(password),
             dead: vec![],
         }
     }
@@ -35,6 +36,8 @@ impl ConnectionManager {
     pub fn tick(&mut self) {
         self.check_outgoing();
         self.mark_expired_as_dead();
+        self.pending.try_writes();
+        self.connected.try_write_client_info();
     }
 
     /// Take ownership of a stream to be managed. Once it's kicked, it'll be available in
@@ -74,20 +77,23 @@ impl ConnectionManager {
     fn check_outgoing(&mut self) {
         match self.out_rx.try_recv() {
             Ok(server::Outgoing::Broadcast(data)) => {
-                self.broadcast(&self.connected.get_all(), &data);
+                self.connected.broadcast(&self.connected.get_all(), &data);
             }
             Ok(server::Outgoing::Kick(token)) => {
                 self.kick_client(token);
             }
+            Ok(server::Outgoing::ClientInfo(info)) => {
+                self.connected.set_current_client_info(info);
+            }
             Err(mpsc::TryRecvError::Disconnected) => {
                 panic!("receiver disconnected");
             }
-            _ => {}
+            Err(mpsc::TryRecvError::Empty) => {}
         }
     }
 
     fn read_pending_validation(&mut self, token: server::Token) {
-        match self.pending.try_read_password(token) {
+        match self.pending.try_validate(token) {
             Ok(did_validate) => {
                 if did_validate {
                     self.pending_to_connected(token);
@@ -146,7 +152,4 @@ impl ConnectionManager {
             self.dead.push(dead);
         }
     }
-
-
-    fn broadcast(&mut self, _clients: &[server::Token], _data: &[u8]) {}
 }

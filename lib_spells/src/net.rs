@@ -81,3 +81,23 @@ impl WorldState {
         }
     }
 }
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct ClientInfo {
+    pub you: Entity,
+}
+
+impl ClientInfo {
+    pub fn serialize(&self) -> Result<Vec<u8>, SerializationError> {
+        match bincode::serialize(&self) {
+            Ok(data) => Ok(data),
+            Err(err) => Err(*err),
+        }
+    }
+    pub fn deserialize(data: &[u8]) -> Result<ClientInfo, SerializationError> {
+        match bincode::deserialize::<ClientInfo>(data) {
+            Ok(info) => Ok(info),
+            Err(err) => Err(*err),
+        }
+    }
+}

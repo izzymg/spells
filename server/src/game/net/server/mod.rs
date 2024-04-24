@@ -10,8 +10,13 @@ use mio::{Events, Interest, Poll};
 use std::io;
 use std::sync::mpsc;
 use std::time::Duration;
+use std::collections::HashMap;
 
 use bevy::log;
+
+#[derive(Debug, Default)]
+/// Information about each active client to be sent to the client.
+pub struct ActiveClientInfo(pub HashMap<Token, lib_spells::net::ClientInfo>);
 
 const SERVER_TOKEN: Token = Token(0);
 const EVENT_BUFFER_SIZE: usize = 1028;
@@ -32,6 +37,7 @@ pub enum Incoming {
 pub enum Outgoing {
     Kick(Token),
     Broadcast(Vec<u8>),
+    ClientInfo(ActiveClientInfo),
 }
 
 pub struct Server {
@@ -60,8 +66,9 @@ impl Server {
         &mut self,
         inc_tx: mpsc::Sender<Incoming>,
         out_rx: mpsc::Receiver<Outgoing>,
+        password: Option<String>,
     ) -> io::Result<()> {
-        let mut manager = connection_manager::ConnectionManager::new(inc_tx, out_rx);
+        let mut manager = connection_manager::ConnectionManager::new(inc_tx, out_rx, password);
 
         let mut next_socket = 0_usize;
         let mut next_token = || {
@@ -118,7 +125,7 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use std::{
-        io::{Read},
+        io::Read,
         sync::mpsc,
         thread,
     };
@@ -136,7 +143,7 @@ mod tests {
         // panic the thread if it doesn't process the client
 
         thread::spawn(move || {
-            server.event_loop(tx, rx);
+            server.event_loop(tx, rx, None).unwrap();
         });
 
         let connect = || {
@@ -144,7 +151,7 @@ mod tests {
             let mut stream = std::net::TcpStream::connect(SERVER_ADDR).unwrap();
             let mut first_response = [0; lib_spells::SERVER_HEADER.len()];
             stream.read_exact(&mut first_response).unwrap();
-            assert_eq!(lib_spells::SERVER_HEADER.as_bytes(), first_response);
+            assert_eq!(lib_spells::SERVER_HEADER, first_response);
         };
 
         connect();
