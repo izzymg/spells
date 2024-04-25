@@ -3,26 +3,65 @@ mod server;
 use crate::game;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool};
 use lib_spells::{net, shared};
-use std::collections::HashMap;
-use std::sync::mpsc;
 use server::packet;
+use std::sync::mpsc;
 
-type ClientID = u32;
+#[derive(Resource, Debug, Default)]
+struct ActiveClientInfo(server::ActiveClientInfo);
 
-#[derive(Resource, Debug, Clone)]
-struct ClientEntityMap(HashMap<ClientID, Entity>);
+fn sys_incoming_server(
+    mut commands: Commands,
+    mut client_entity_map: ResMut<ActiveClientInfo>,
+    server: NonSend<ServerComms>,
+) {
+    match server.incoming.try_recv() {
+        Ok(incoming) => match incoming {
+            server::Incoming::Joined(token) => {
+                let entity = commands
+                    .spawn((
+                        shared::Player,
+                        shared::Name(format!("Player {}", token)),
+                        shared::Position(Vec3::ZERO),
+                    ))
+                    .id();
+                client_entity_map
+                    .0
+                     .0
+                    .insert(token, net::ClientInfo { you: entity });
+                server
+                    .outgoing
+                    .send(server::Outgoing::ClientInfo(client_entity_map.0.clone()))
+                    .unwrap();
+            }
+            server::Incoming::Left(token) => {
+                commands
+                    .entity(client_entity_map.0 .0.get(&token).unwrap().you)
+                    .despawn_recursive();
+                client_entity_map.0 .0.remove(&token);
+                server
+                    .outgoing
+                    .send(server::Outgoing::ClientInfo(client_entity_map.0.clone()))
+                    .unwrap();
+            }
+            server::Incoming::Data(token, packet) => {}
+        },
+        Err(mpsc::TryRecvError::Disconnected) => {
+            panic!("server thread died");
+        }
+        Err(mpsc::TryRecvError::Empty) => {}
+    }
+}
 
 // assumes all packets belong to the same client
 fn sys_parse_client_packets(
-    In((client_id, _packets)): In<(ClientID, &[packet::Packet])>,
-    client_entity_map: Res<ClientEntityMap>,
-    _server: NonSend<ServerComms>,
+    In((client_id, _packets)): In<(server::Token, &[packet::Packet])>,
+    client_entity_map: Res<ActiveClientInfo>,
 ) {
-    let _client_entity = *client_entity_map
+    let _client_entity = client_entity_map
         .0
+         .0
         .get(&client_id)
         .expect("clients passed must have a mapped entity");
-
 }
 
 fn sys_create_state() -> net::WorldState {
@@ -97,18 +136,23 @@ impl Plugin for NetPlugin {
             .detach();
 
         app.insert_non_send_resource(ServerComms::new(incoming_rx, broadcast_tx));
-
+        app.insert_resource(ActiveClientInfo::default());
         app.add_systems(
             FixedLast,
-            (sys_create_state
-                .pipe(sys_update_component_world_state::<shared::Health>)
-                .pipe(sys_update_component_world_state::<shared::Aura>)
-                .pipe(sys_update_component_world_state::<shared::SpellCaster>)
-                .pipe(sys_update_component_world_state::<shared::CastingSpell>)
-                .pipe(sys_update_component_world_state::<shared::Position>)
-                .pipe(sys_broadcast_state)
-                .map(drop))
-            .in_set(game::ServerSets::NetworkSend),
+            (
+                sys_incoming_server,
+                (sys_create_state
+                    .pipe(sys_update_component_world_state::<shared::Health>)
+                    .pipe(sys_update_component_world_state::<shared::Aura>)
+                    .pipe(sys_update_component_world_state::<shared::SpellCaster>)
+                    .pipe(sys_update_component_world_state::<shared::CastingSpell>)
+                    .pipe(sys_update_component_world_state::<shared::Position>)
+                    .pipe(sys_update_component_world_state::<shared::Player>)
+                    .pipe(sys_update_component_world_state::<shared::Name>)
+                    .pipe(sys_broadcast_state)
+                    .map(drop)),
+            )
+                .in_set(game::ServerSets::NetworkSend),
         );
     }
 }

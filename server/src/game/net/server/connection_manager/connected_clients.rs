@@ -10,7 +10,10 @@ struct ConnectedClient {
 #[derive(Default)]
 pub struct ConnectedClients {
     map: HashMap<server::Token, ConnectedClient>,
+    // clients that need to be sent `ClientInfo`
     needs_info: HashSet<server::Token>,
+    // clients that are OK to send broadcast data to
+    send_targets: HashSet<server::Token>,
     current_client_info: server::ActiveClientInfo,
 }
 
@@ -24,12 +27,20 @@ impl ConnectedClients {
         let mut errors = vec![];
         self.needs_info.retain(|token| {
             if let Some(info) = self.current_client_info.0.get(token) {
+                dbg!(info);
                 let conn_client = self.map.get_mut(token).unwrap();
                 match conn_client
                     .stream
                     .try_write_prefixed(&info.serialize().unwrap())
                 {
-                    Ok(is_done) => !is_done, // retain the client if we're not done writing
+                    Ok(is_done) => {
+                        if is_done {
+                            println!("write finished");
+                            self.send_targets.insert(*token);
+                            return false
+                        }
+                        true
+                    }
                     Err(err) => {
                         errors.push((*token, err));
                         false
@@ -57,13 +68,14 @@ impl ConnectedClients {
     pub fn remove_client(&mut self, token: server::Token) -> Option<tcp_stream::ClientStream> {
         if let Some(stream) = self.map.remove(&token) {
             self.needs_info.remove(&token);
+            self.send_targets.remove(&token);
             Some(stream.stream)
         } else {
             None
         }
     }
 
-    pub fn get_all(&self) -> Vec<server::Token> {
+    pub fn get_send_targets(&self) -> Vec<server::Token> {
         self.map.keys().copied().collect()
     }
 
@@ -72,7 +84,7 @@ impl ConnectedClients {
     }
 
     /// Returns a list of failed writes
-    pub fn broadcast(
+    pub fn send_to(
         &mut self,
         _clients: &[server::Token],
         data: &[u8],

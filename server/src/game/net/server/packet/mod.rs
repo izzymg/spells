@@ -5,9 +5,6 @@ use std::io;
 use std::time::Instant;
 use strum_macros::FromRepr;
 
-const MAX_PAYLOAD_SIZE: u8 = 8 + 1; // inclusive of delimiter
-const PACKET_DELIMITER: u8 = 0x3b; // ;
-
 /// Higher level packet of input from a client
 #[derive(Debug, Copy, Clone)]
 pub struct Packet {
@@ -86,8 +83,6 @@ pub(super) enum PacketCommand {
 #[derive(Debug)]
 pub enum InvalidPacketError {
     IoError(io::Error),
-    MessageSize(usize),
-    BadDelimiter(u8),
     InvalidPayload,
     BadMoveDirection,
 }
@@ -103,16 +98,6 @@ impl fmt::Display for InvalidPacketError {
         match self {
             InvalidPacketError::IoError(err) => {
                 write!(f, "io error: {}", err)
-            }
-            InvalidPacketError::MessageSize(size) => {
-                write!(f, "invalid message size {}", size)
-            }
-            InvalidPacketError::BadDelimiter(dl) => {
-                write!(
-                    f,
-                    "bad delimiter {:#x}, expected {:#x}",
-                    dl, PACKET_DELIMITER
-                )
             }
             InvalidPacketError::InvalidPayload => {
                 write!(f, "bad payload formatting")
@@ -168,4 +153,3 @@ impl TryFrom<&[u8]> for IncomingPacket {
         Err(InvalidPacketError::InvalidPayload)
     }
 }
-

@@ -2,7 +2,6 @@
 broadcast, etc */
 use crate::game::net::server;
 use bevy::log;
-use mio::event::Event;
 use std::sync::mpsc;
 
 mod connected_clients;
@@ -79,7 +78,7 @@ impl ConnectionManager {
     fn check_outgoing(&mut self) {
         match self.out_rx.try_recv() {
             Ok(server::Outgoing::Broadcast(data)) => {
-                self.connected.broadcast(&self.connected.get_all(), &data);
+                self.connected.send_to(&self.connected.get_send_targets(), &data);
             }
             Ok(server::Outgoing::Kick(token)) => {
                 self.kick_client(token);

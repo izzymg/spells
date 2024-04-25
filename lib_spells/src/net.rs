@@ -1,10 +1,8 @@
+use crate::shared;
 use std::collections::HashMap;
-
 use bevy::prelude::*;
 use bincode;
 use serde::{Deserialize, Serialize};
-
-use crate::shared;
 
 pub type SerializationError = bincode::ErrorKind;
 // we making it into the mental asylum with this one
@@ -47,7 +45,11 @@ gen_state!(
     shared::CastingSpell,
     casting_spell,
     shared::Position,
-    position
+    position,
+    shared::Player,
+    player,
+    shared::Name,
+    name
 );
 
 /// Maps a set of entities to their component state for network magic.
@@ -82,7 +84,7 @@ impl WorldState {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Copy, Clone)]
 pub struct ClientInfo {
     pub you: Entity,
 }

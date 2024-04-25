@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use std::{env, error::Error};
+use std::error::Error;
 
 /// snapshots of world
 use bevy::{app, log::LogPlugin, prelude::*};

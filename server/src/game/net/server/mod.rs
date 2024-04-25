@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use bevy::log;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 /// Information about each active client to be sent to the client.
 pub struct ActiveClientInfo(pub HashMap<Token, lib_spells::net::ClientInfo>);
 
@@ -29,7 +29,7 @@ impl Token {
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "client ID {}", self.0 .0)
+        write!(f, "ID:{}", self.0 .0)
     }
 }
 
@@ -184,8 +184,12 @@ mod tests {
                 assert_eq!(lib_spells::SERVER_HEADER, first_response);
                 stream.write_all(&[password.len() as u8]).unwrap();
                 stream.write_all(password.as_bytes()).unwrap();
-                let mut buf = vec![];
-                stream.read_to_end(&mut buf).unwrap();
+                loop {
+                    let mut buf = vec![];
+                    stream.read(&mut buf).unwrap();
+                    dbg!(buf);
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
             });
         };
 
