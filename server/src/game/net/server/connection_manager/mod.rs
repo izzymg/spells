@@ -34,30 +34,31 @@ impl ConnectionManager {
 
     /// Check channels & internals, clean up dead stuff
     pub fn tick(&mut self) {
-        self.check_outgoing();
-        self.mark_expired_as_dead();
-        self.pending.try_writes();
+        self.pending.try_send_headers();
         self.connected.try_write_client_info();
+        self.connect_validated_pending();
+        self.kick_expired();
+        self.check_outgoing();
     }
 
     /// Take ownership of a stream to be managed. Once it's kicked, it'll be available in
     /// `collect_dead`.
-    pub fn manage_stream(&mut self, token: server::Token, stream: tcp_stream::ClientStream, is_readable: bool) {
-        println!("pending client: {}", token.0);
+    pub fn manage_stream(
+        &mut self,
+        token: server::Token,
+        stream: tcp_stream::ClientStream,
+        is_readable: bool,
+    ) {
+        log::info!("pending: {}", token);
         self.pending.add_client(token, stream);
+        self.pending.try_send_headers();
         if is_readable {
-            self.read_pending_validation(token);
+            self.read_pending_validation(token)
         }
     }
 
-    /// Figure out who an event is for and handle appropriately.
-    pub fn handle_event(&mut self, event: &Event) {
-        let token = event.token();
-
-        if !event.is_readable() {
-            return;
-        }
-
+    /// Try to read from the client at the given token
+    pub fn try_read(&mut self, token: server::Token) {
         if self.pending.has_client(token) {
             self.read_pending_validation(token);
         }
@@ -94,17 +95,9 @@ impl ConnectionManager {
     }
 
     fn read_pending_validation(&mut self, token: server::Token) {
-        match self.pending.try_validate(token) {
-            Ok(did_validate) => {
-                if did_validate {
-                    self.pending_to_connected(token);
-                    println!("client {} validated & connected", token.0);
-                }
-            }
-            Err(err) => {
-                println!("{} validation error: {}", err, token.0);
-                self.kick_client(token);
-            }
+        if let Err(err) = self.pending.try_read_password(token) {
+            log::info!("validation error {}: {}", token, err);
+            self.kick_client(token);
         }
     }
 
@@ -118,16 +111,16 @@ impl ConnectionManager {
                 }
             }
             Err(err) => {
-                log::warn!("read error: {}", err);
-                println!("read error: {}", err);
+                log::info!("read error {}: {}", token, err);
                 self.kick_client(token);
             }
         }
     }
 
-    /// Moves a client from pending status to connected status
-    fn pending_to_connected(&mut self, token: server::Token) {
-        if let Some(client) = self.pending.remove_client(token) {
+    /// Take all validated pending clients and move them to `connected`
+    fn connect_validated_pending(&mut self) {
+        for (token, client) in self.pending.remove_validated() {
+            log::info!("client validated & connected: {} {}", token, client);
             self.connected.add_client(token, client);
             self.inc_tx
                 .send(server::Incoming::Joined(token))
@@ -135,11 +128,11 @@ impl ConnectionManager {
         }
     }
 
-    // we don't need to notify above us about non-connected clients
-    // they only care about verified people
+    /// Tries to pull `token` out of either `connected` or `pending` and move it into `dead`.
     fn kick_client(&mut self, token: server::Token) {
-        println!("kick: {}", token.0);
+        log::info!("kick: {}", token);
         if let Some(client) = self.connected.remove_client(token) {
+            // make sure we notify about connected clients leaving
             self.inc_tx
                 .send(server::Incoming::Left(token))
                 .expect("dead receiver");
@@ -147,13 +140,15 @@ impl ConnectionManager {
         }
 
         if let Some(client) = self.pending.remove_client(token) {
+            // we don't need to notify above us about non-connected clients
+            // they only care about verified people
             self.dead.push(client);
         }
     }
 
-    fn mark_expired_as_dead(&mut self) {
-        for dead in self.pending.remove_expired() {
-            self.dead.push(dead);
+    fn kick_expired(&mut self) {
+        for dead in self.pending.get_expired() {
+            self.kick_client(dead);
         }
     }
 }

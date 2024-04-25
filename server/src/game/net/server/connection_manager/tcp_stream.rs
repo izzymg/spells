@@ -34,6 +34,7 @@ fn is_would_block(err: &io::Error) -> bool {
 #[derive(Debug)]
 pub struct ClientStream {
     stream: mio::net::TcpStream,
+    addr: String,
 
     read_buffer: Vec<u8>,
     read_bytes: usize,
@@ -46,11 +47,17 @@ impl ClientStream {
     }
 
     pub fn new(stream: mio::net::TcpStream) -> Self {
+        let addr = if let Ok(addr) = stream.peer_addr() {
+            addr.to_string()
+        } else {
+            "Unknown Address".into()
+        };
         Self {
             stream,
             // extra byte is so we can store the header here + content len
             read_buffer: vec![0; (MAX_MESSAGE_BYTES + 1).into()],
             read_bytes: 0,
+            addr,
         }
     }
 
@@ -159,14 +166,6 @@ impl ClientStream {
         }
     }
 
-    pub fn ip_or_unknown(&self) -> String {
-        if let Ok(addr) = self.stream.peer_addr() {
-            addr.to_string()
-        } else {
-            "Unknown Address".into()
-        }
-    }
-
     /// write a length header then write the data
     /// returns (total written, data + header length)
     fn write_prefixed(&mut self, data: &[u8]) -> io::Result<(usize, usize)> {
@@ -180,7 +179,7 @@ impl ClientStream {
 
 impl Display for ClientStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({})", self.ip_or_unknown())
+        write!(f, "({})", self.addr)
     }
 }
 

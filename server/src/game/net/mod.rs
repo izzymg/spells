@@ -1,7 +1,7 @@
 mod movement;
 mod server;
 use crate::game;
-use bevy::{app, log, prelude::*, tasks::IoTaskPool, utils::dbg};
+use bevy::{app, log, prelude::*, tasks::IoTaskPool};
 use lib_spells::{net, shared};
 use std::collections::HashMap;
 use std::sync::mpsc;
@@ -90,7 +90,9 @@ impl Plugin for NetPlugin {
         IoTaskPool::get()
             .spawn(async move {
                 log::debug!("client event loop task spawned");
-                server.event_loop(incoming_tx, broadcast_rx, password);
+                if let Err(err) = server.event_loop(incoming_tx, broadcast_rx, password) {
+                    log::error!("client event loop exited: {}", err);
+                }
             })
             .detach();
 
@@ -105,7 +107,7 @@ impl Plugin for NetPlugin {
                 .pipe(sys_update_component_world_state::<shared::CastingSpell>)
                 .pipe(sys_update_component_world_state::<shared::Position>)
                 .pipe(sys_broadcast_state)
-                .map(dbg))
+                .map(drop))
             .in_set(game::ServerSets::NetworkSend),
         );
     }

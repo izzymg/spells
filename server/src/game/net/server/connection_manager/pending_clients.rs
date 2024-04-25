@@ -1,5 +1,5 @@
 use crate::game::net::server;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::{Duration, Instant};
 use std::{io, time};
@@ -37,18 +37,20 @@ struct TimedClient {
     created_at: time::Instant,
     stream: tcp_stream::ClientStream,
     sent_header: bool,
+    validated: bool,
 }
 
 impl TimedClient {
-    pub fn new(client: tcp_stream::ClientStream) -> Self {
+    pub fn new(client: tcp_stream::ClientStream, passworded: bool) -> Self {
         Self {
             stream: client,
             created_at: Instant::now(),
             sent_header: false,
+            validated: !passworded,
         }
     }
 
-    /// has this client been pending for longer than our timeout
+    /// Has this client been pending for longer than our timeout
     pub fn is_expired(&self) -> bool {
         Instant::now().duration_since(self.created_at) > PENDING_TIMEOUT
     }
@@ -78,7 +80,7 @@ impl PendingClients {
     }
 
     pub fn add_client(&mut self, token: server::Token, client: tcp_stream::ClientStream) {
-        let pending = TimedClient::new(client);
+        let pending = TimedClient::new(client, self.password.is_some());
         self.pending.insert(token, pending);
     }
 
@@ -86,20 +88,28 @@ impl PendingClients {
         Some(self.pending.remove(&token)?.stream)
     }
 
-    /// Moves all the expired streams out to the caller.
-    pub fn remove_expired(&mut self) -> Vec<tcp_stream::ClientStream> {
+    /// Returns a list of expired clients
+    pub fn get_expired(&mut self) -> Vec<server::Token> {
         self.pending
             .iter()
             .filter_map(|(t, s)| s.is_expired().then_some(t))
             .copied()
-            .collect::<Vec<server::Token>>()
+            .collect()
+    }
+
+    /// Moves all fully validated streams out to the caller
+    pub fn remove_validated(&mut self) -> Vec<(server::Token, tcp_stream::ClientStream)> {
+        self.pending
             .iter()
-            .map(|t| self.pending.remove(t).unwrap().stream)
+            .filter_map(|(t, s)| (s.validated && s.sent_header).then_some(*t))
+            .collect::<Vec<server::Token>>() // borrow checker
+            .iter()
+            .map(|t| (*t, self.pending.remove(t).unwrap().stream))
             .collect()
     }
 
     /// Returns a list of failed writes.
-    pub fn try_writes(&mut self) -> Vec<(server::Token, std::io::Error)> {
+    pub fn try_send_headers(&mut self) -> Vec<(server::Token, std::io::Error)> {
         self.pending
             .iter_mut()
             .filter_map(|(token, client)| {
@@ -109,29 +119,25 @@ impl PendingClients {
             .collect()
     }
 
-    /// Returns `Ok(true)` if a correct password was given. Returns `Ok(false)` if nothing was
-    /// provided and the caller should wait. Bad passwords are errors. Returns `Ok(true)`
-    /// immediately with no read if no password is configured.
-    pub fn try_validate(
-        &mut self,
-        token: server::Token,
-    ) -> Result<bool, ClientValidationError> {
+    /// Try to read a password off of a pending client, marking it as validated if it was sent
+    /// correctly.
+    pub fn try_read_password(&mut self, token: server::Token) -> Result<(), ClientValidationError> {
         let client = self.pending.get_mut(&token).unwrap();
         if let Some(password) = &self.password {
             match client.stream.try_read_messages() {
-                Ok(messages) if messages.is_empty() => Ok(false),
                 Ok(messages) => {
-                    if password.as_bytes() == messages[0] {
-                        Ok(true)
-                    } else {
-                        Err(ClientValidationError::BadPassword)
+                    if let Some(message) = messages.first() {
+                        if password.as_bytes() == message {
+                            client.validated = true;
+                        } else {
+                            return Err(ClientValidationError::BadPassword);
+                        }
                     }
                 }
-                Err(err) => Err(err.into()),
+                Err(err) => return Err(err.into()),
             }
-        } else {
-            Ok(true)
         }
+        Ok(())
     }
 
     pub fn has_client(&self, token: server::Token) -> bool {

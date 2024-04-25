@@ -1,6 +1,5 @@
 use super::tcp_stream;
 use crate::game::net::{packet, server};
-use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
 struct ConnectedClient {
