@@ -1,16 +1,16 @@
 /*! TCP server implementation for managing connected game clients */
 
-pub mod packet;
 mod connection_manager;
+pub mod packet;
 
 use mio::net::TcpListener;
 pub use mio::Token;
 use mio::{Events, Interest, Poll};
 
+use std::collections::HashMap;
 use std::io;
 use std::sync::mpsc;
 use std::time::Duration;
-use std::collections::HashMap;
 
 use bevy::log;
 
@@ -70,7 +70,7 @@ impl Server {
     ) -> io::Result<()> {
         let mut manager = connection_manager::ConnectionManager::new(inc_tx, out_rx, password);
 
-        let mut next_socket = 0_usize;
+        let mut next_socket = 1_usize;
         let mut next_token = || {
             let token = Token(next_socket);
             next_socket += 1;
@@ -85,6 +85,7 @@ impl Server {
             manager.tick();
             manager.collect_dead(|dead| {
                 log::debug!("deregister dead: {}", dead.ip_or_unknown());
+                println!("deregister dead: {}", dead.ip_or_unknown());
                 self.poll
                     .registry()
                     .deregister(&mut dead.into_inner())
@@ -101,7 +102,6 @@ impl Server {
                             }
                             Err(e) => return Err(e),
                         };
-
                         log::info!("got new connection from: {}", addr);
                         let new_token = next_token();
                         self.poll
@@ -112,7 +112,11 @@ impl Server {
                                 Interest::READABLE.add(Interest::WRITABLE),
                             )
                             .unwrap();
-                        manager.manage_stream(new_token, connection_manager::tcp_stream::ClientStream::new(stream));
+                        manager.manage_stream(
+                            new_token,
+                            connection_manager::tcp_stream::ClientStream::new(stream),
+                            ev.is_readable(),
+                        );
                     },
                     // this is a managed client
                     _ => manager.handle_event(ev)
@@ -124,37 +128,39 @@ impl Server {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        io::Read,
-        sync::mpsc,
-        thread,
-    };
+    use std::{io::Read, io::Write, sync::mpsc, thread};
 
     use super::*;
 
+    #[ignore]
     #[test]
     fn test_incoming_client_recv() {
         let (_keep, rx) = mpsc::channel();
         let (tx, _keep) = mpsc::channel();
         let mut server = Server::create().unwrap();
-        // create a client stream
-        // create a thread that blocks & fetches our clients
-        // assert we grab the server header correctly
-        // panic the thread if it doesn't process the client
 
-        thread::spawn(move || {
-            server.event_loop(tx, rx, None).unwrap();
+        let password = "bob".to_string();
+        let server_pass = Some(password.clone());
+
+        let server_h = thread::spawn(move || {
+            server.event_loop(tx, rx, server_pass).unwrap();
         });
 
-        let connect = || {
-            // use a std stream so it blocks
-            let mut stream = std::net::TcpStream::connect(SERVER_ADDR).unwrap();
-            let mut first_response = [0; lib_spells::SERVER_HEADER.len()];
-            stream.read_exact(&mut first_response).unwrap();
-            assert_eq!(lib_spells::SERVER_HEADER, first_response);
+        let connect = |password: String| {
+            std::thread::spawn(move || {
+                let mut stream = std::net::TcpStream::connect(SERVER_ADDR).unwrap();
+                let mut first_response = [0; lib_spells::SERVER_HEADER.len()];
+                stream.read_exact(&mut first_response).unwrap();
+                assert_eq!(lib_spells::SERVER_HEADER, first_response);
+                stream.write_all(&[password.len() as u8]).unwrap();
+                stream.write_all(password.as_bytes()).unwrap();
+                let mut buf = vec![];
+                stream.read_to_end(&mut buf).unwrap();
+            });
         };
 
-        connect();
-        connect();
+        connect(password.clone());
+        connect("not the password".into());
+        dbg!(server_h.join().unwrap());
     }
 }

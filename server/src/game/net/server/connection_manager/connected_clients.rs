@@ -23,7 +23,6 @@ impl ConnectedClients {
     /// Tries to write info to any clients that need info and we have updated info state for
     pub fn try_write_client_info(&mut self) -> Vec<(server::Token, std::io::Error)> {
         let mut errors = vec![];
-        dbg!(&self.needs_info);
         self.needs_info.retain(|token| {
             if let Some(info) = self.current_client_info.0.get(token) {
                 let conn_client = self.map.get_mut(token).unwrap();

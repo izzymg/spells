@@ -42,26 +42,27 @@ impl ConnectionManager {
 
     /// Take ownership of a stream to be managed. Once it's kicked, it'll be available in
     /// `collect_dead`.
-    pub fn manage_stream(&mut self, token: server::Token, stream: tcp_stream::ClientStream) {
+    pub fn manage_stream(&mut self, token: server::Token, stream: tcp_stream::ClientStream, is_readable: bool) {
+        println!("pending client: {}", token.0);
         self.pending.add_client(token, stream);
+        if is_readable {
+            self.read_pending_validation(token);
+        }
     }
 
-    /// Figure out who an event is for and handle appropriately. Panics if an event was passed for
-    /// a client we don't have.
+    /// Figure out who an event is for and handle appropriately.
     pub fn handle_event(&mut self, event: &Event) {
         let token = event.token();
 
+        if !event.is_readable() {
+            return;
+        }
+
         if self.pending.has_client(token) {
-            if event.is_readable() {
-                self.read_pending_validation(token);
-            }
-            if event.is_writable() {}
-        } else if self.connected.has_client(token) {
-            if event.is_readable() {
-                self.read_client_packets(token);
-            }
-        } else {
-            panic!("mismanaged client");
+            self.read_pending_validation(token);
+        }
+        if self.connected.has_client(token) {
+            self.read_client_packets(token);
         }
     }
 
@@ -97,10 +98,11 @@ impl ConnectionManager {
             Ok(did_validate) => {
                 if did_validate {
                     self.pending_to_connected(token);
+                    println!("client {} validated & connected", token.0);
                 }
             }
             Err(err) => {
-                log::warn!("validation error: {}", err);
+                println!("{} validation error: {}", err, token.0);
                 self.kick_client(token);
             }
         }
@@ -117,6 +119,7 @@ impl ConnectionManager {
             }
             Err(err) => {
                 log::warn!("read error: {}", err);
+                println!("read error: {}", err);
                 self.kick_client(token);
             }
         }
@@ -135,6 +138,7 @@ impl ConnectionManager {
     // we don't need to notify above us about non-connected clients
     // they only care about verified people
     fn kick_client(&mut self, token: server::Token) {
+        println!("kick: {}", token.0);
         if let Some(client) = self.connected.remove_client(token) {
             self.inc_tx
                 .send(server::Incoming::Left(token))

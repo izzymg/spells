@@ -81,7 +81,6 @@ impl ClientStream {
         }
     }
 
-
     /// Try to write all of what's buffered with a length prefix. Returns true if all of the buffer
     /// was written. Errors on partial writes.
     #[allow(clippy::unused_io_amount)]
@@ -129,7 +128,9 @@ impl ClientStream {
 
         loop {
             match self.stream.read(&mut self.read_buffer[self.read_bytes..]) {
-                Ok(n) if n < 1 => return Err(io::ErrorKind::UnexpectedEof.into()),
+                Ok(n) if n < 1 => {
+                    return Err(io::ErrorKind::UnexpectedEof.into());
+                }
                 Ok(n) => {
                     let message_len = self.read_buffer[0] as usize;
                     let total_read = self.read_bytes + n;
@@ -173,10 +174,7 @@ impl ClientStream {
         let mut total_written = 0;
         total_written += self.stream.write(&header_bytes)?;
         total_written += self.stream.write(data)?;
-        Ok((
-            total_written,
-            (header_bytes.len() + data.len()),
-        ))
+        Ok((total_written, (header_bytes.len() + data.len())))
     }
 }
 
@@ -280,12 +278,17 @@ mod tests {
                     Err(_err) => continue,
                 }
             };
-            ClientStream::new(stream).try_write_prefixed(message).unwrap();
+            ClientStream::new(stream)
+                .try_write_prefixed(message)
+                .unwrap();
         });
 
         let mut client = std::net::TcpStream::connect(server_addr).unwrap();
         handle.join().unwrap();
         let mut buf = vec![0; message.len()];
-        assert_eq!(message.len() + std::mem::size_of::<u32>(), client.read_to_end(&mut buf).unwrap());
+        assert_eq!(
+            message.len() + std::mem::size_of::<u32>(),
+            client.read_to_end(&mut buf).unwrap()
+        );
     }
 }
