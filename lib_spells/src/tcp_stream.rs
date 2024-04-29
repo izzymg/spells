@@ -66,6 +66,10 @@ impl ClientStream {
         self.stream
     }
 
+    pub fn inner(&mut self) -> &mut mio::net::TcpStream {
+        &mut self.stream
+    }
+
     /// Try to write all of what's buffered with a length prefix. Returns true if all of the buffer
     /// was written. Errors on partial writes.
     #[allow(clippy::unused_io_amount)]
