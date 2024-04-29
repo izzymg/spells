@@ -1,20 +1,21 @@
 /*! Buffered, message parsing mio TCP stream wrapper */
 use std::fmt::Display;
 use std::io::{self, Read, Write};
+use mio;
 
-const MAX_MESSAGE_BYTES: u8 = 50;
+const MAX_MESSAGE_BYTES: u16 = u16::MAX - 1;
 
 // Try to read a single-byte message length header into the first byte of `buf`
 fn try_read_message_length(
-    max_bytes: u8,
+    max_bytes: u16,
     buf: &mut [u8],
     stream: &mut impl io::Read,
 ) -> io::Result<()> {
-    let read = stream.read(&mut buf[0..1])?;
+    let read = stream.read(&mut buf[0..2])?;
     if read == 0 {
         return Err(io::ErrorKind::UnexpectedEof.into());
     }
-    let to_read = u8::from_le_bytes(buf[0..1].try_into().unwrap());
+    let to_read = u16::from_le_bytes(buf[0..2].try_into().unwrap());
     if to_read < 1 || to_read > max_bytes {
         return Err(io::ErrorKind::InvalidData.into());
     }
@@ -41,7 +42,7 @@ pub struct ClientStream {
 }
 
 impl ClientStream {
-    fn max_message_bytes(&self) -> u8 {
+    fn max_message_bytes(&self) -> u16 {
         // exclude the byte for the header
         (self.read_buffer.len() - 1).try_into().unwrap()
     }
@@ -63,29 +64,6 @@ impl ClientStream {
 
     pub fn into_inner(self) -> mio::net::TcpStream {
         self.stream
-    }
-
-    /// Try to write all of what's buffered. Returns true if all of the buffer
-    /// was written. Errors on partial writes.
-    #[allow(clippy::unused_io_amount)]
-    pub fn try_write(&mut self, buffer: &[u8]) -> io::Result<bool> {
-        loop {
-            match self.stream.write(buffer) {
-                Ok(n) if n < buffer.len() => {
-                    return Err(io::ErrorKind::WriteZero.into());
-                }
-                Ok(_) => {
-                    return Ok(true);
-                }
-                Err(ref err) if is_would_block(err) => {
-                    return Ok(false);
-                }
-                Err(ref err) if is_interrupted(err) => {
-                    continue;
-                }
-                Err(err) => return Err(err),
-            }
-        }
     }
 
     /// Try to write all of what's buffered with a length prefix. Returns true if all of the buffer
@@ -169,7 +147,7 @@ impl ClientStream {
     /// write a length header then write the data
     /// returns (total written, data + header length)
     fn write_prefixed(&mut self, data: &[u8]) -> io::Result<(usize, usize)> {
-        let header_bytes = (data.len() as u32).to_le_bytes();
+        let header_bytes = (data.len() as u16).to_le_bytes();
         let mut total_written = 0;
         total_written += self.stream.write(&header_bytes)?;
         total_written += self.stream.write(data)?;

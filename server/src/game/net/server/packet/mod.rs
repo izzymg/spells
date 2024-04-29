@@ -33,6 +33,7 @@ impl Packet {
 #[derive(Debug, Copy, Clone)]
 pub enum PacketData {
     Movement(MovementDirection),
+    Noop,
 }
 
 /// Movement states including no movement, going clockwise from forward.

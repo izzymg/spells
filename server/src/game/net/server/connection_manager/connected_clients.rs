@@ -27,7 +27,6 @@ impl ConnectedClients {
         let mut errors = vec![];
         self.needs_info.retain(|token| {
             if let Some(info) = self.current_client_info.0.get(token) {
-                dbg!(info);
                 let conn_client = self.map.get_mut(token).unwrap();
                 match conn_client
                     .stream

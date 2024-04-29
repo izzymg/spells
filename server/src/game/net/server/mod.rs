@@ -12,6 +12,8 @@ use std::io;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use lib_spells::tcp_stream;
+
 use bevy::log;
 
 #[derive(Debug, Default, Clone)]
@@ -141,7 +143,7 @@ impl Server {
                             .unwrap();
                         manager.manage_stream(
                             new_token,
-                            connection_manager::tcp_stream::ClientStream::new(stream),
+                            tcp_stream::ClientStream::new(stream),
                             ev.is_readable(),
                         );
                     },

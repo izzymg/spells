@@ -19,23 +19,14 @@ pub(super) fn sys_menu_connect_ev(
     mut status: ResMut<ConnectionStatus>,
 ) {
     if let Some(ev) = ev_r.read().last() {
-        commands.run_system_with_input(world_conn.connect_system, ev.address.clone());
+        commands.run_system_with_input(world_conn.connect_system, (ev.address.clone(), None));
         status.status = "connecting...".into();
     }
 }
 
 pub(super) fn sys_update_connection_status(
-    world_conn: Res<world_connection::WorldConnection>,
-    mut ui_status: ResMut<ConnectionStatus>,
-    mut next_game_state: ResMut<NextState<GameStates>>,
+    _world_conn: Res<world_connection::WorldConnection>,
+    _ui_status: ResMut<ConnectionStatus>,
+    _next_game_state: ResMut<NextState<GameStates>>,
 ) {
-    if let Some(msg) = &world_conn.message {
-        ui_status.status = msg.to_string();
-        if let world_connection::WorldConnectionMessage::Status(
-            world_connection::ServerStreamStatus::Connected,
-        ) = msg
-        {
-            next_game_state.set(GameStates::Game);
-        }
-    }
 }

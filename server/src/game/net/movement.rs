@@ -24,20 +24,38 @@ impl VelocityInstant {
     }
 }
 
-/// Given packets should belong to a single client, in order of their timestamp
-/// todo: copying these shouldn't be expensive, but check
+#[derive(Debug, Copy, Clone)]
+pub struct MovementPacket {
+    pub timestamp: Instant,
+    pub direction: packet::MovementDirection,
+}
+
+impl MovementPacket {
+    pub fn from_packet(packet: packet::Packet) -> Option<Self> {
+        if let packet::PacketData::Movement(dir) = packet.data {
+            Some(Self {
+                timestamp: packet.timestamp,
+                direction: dir,
+            })
+        } else {
+            None
+        }
+    }
+}
+
 pub fn integrate_movement_packets(
-    position: Vec3,
-    velocity_instant: VelocityInstant,
-    packets: impl Iterator<Item = (Instant, packet::MovementDirection)>,
+    init_pos: Vec3,
+    init_vel_i: VelocityInstant,
+    packets: impl Iterator<Item = MovementPacket>,
 ) -> (Vec3, VelocityInstant) {
-    packets.fold(
-        (position, velocity_instant),
-        |(pos, vel), (timestamp, dir)| {
-            let passed = timestamp.saturating_duration_since(vel.timestamp);
-            let dir = dir.to_3d();
+    packets
+        .fold(
+        (init_pos, init_vel_i),
+        |(pos, vel_i), packet| {
+            let passed = packet.timestamp.saturating_duration_since(vel_i.timestamp);
+            let dir = packet.direction.to_3d();
             let n_pos = find_position(pos, dir, passed);
-            let n_vel = VelocityInstant::new(timestamp, dir);
+            let n_vel = VelocityInstant::new(packet.timestamp, dir);
             (n_pos, n_vel)
         },
     )
@@ -72,9 +90,16 @@ mod test {
 
         // order important here
         thread::sleep(duration);
+        let now = Instant::now();
         let packets = [
-            (Instant::now(), dir),
-            (Instant::now(), packet::MovementDirection::Still),
+            MovementPacket {
+                timestamp: now, 
+                direction: dir,
+            },
+            MovementPacket {
+                timestamp: now,
+                direction: packet::MovementDirection::Still,
+            }
         ];
 
         let expected_pos = starting_pos + (dir.to_3d() * duration.as_secs_f32());

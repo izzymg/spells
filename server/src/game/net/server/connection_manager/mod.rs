@@ -3,10 +3,10 @@ broadcast, etc */
 use crate::game::net::server;
 use bevy::log;
 use std::sync::mpsc;
+use lib_spells::tcp_stream;
 
 mod connected_clients;
 mod pending_clients;
-pub mod tcp_stream;
 
 pub struct ConnectionManager {
     inc_tx: mpsc::Sender<server::Incoming>,

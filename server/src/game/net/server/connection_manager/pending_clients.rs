@@ -59,7 +59,7 @@ impl TimedClient {
         if self.sent_header {
             return Ok(());
         }
-        if self.stream.try_write(lib_spells::SERVER_HEADER)? {
+        if self.stream.try_write_prefixed(lib_spells::SERVER_HEADER)? {
             self.sent_header = true;
         }
         Ok(())

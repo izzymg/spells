@@ -1,26 +1,31 @@
+use lib_spells::tcp_stream;
 use std::{
     fmt::Display,
-    io::{self, BufRead, BufReader, BufWriter, Read, Write},
-    net::{self, TcpStream},
-    sync::mpsc::Sender,
+    io::{self, Read, Write},
+    sync::mpsc,
+    time::Duration,
 };
-
-use bevy::log;
 
 const PREFIX_BYTES: usize = 4;
 const MAX_MESSAGE_SIZE: u32 = 10 * 1000;
+const SERVER_READ_TIMEOUT: Option<Duration> = Some(Duration::from_secs(1));
+const SERVER_WRITE_TIMEOUT: Option<Duration> = Some(Duration::from_secs(1));
+
+pub type Result<T> = std::result::Result<T, ConnectionError>;
 
 #[derive(Debug, PartialEq)]
-pub enum ServerStreamError {
+pub enum ConnectionError {
     InvalidServer,
     ConnectionEnded,
     BigMessage(u32),
     IO(io::ErrorKind),
+    BadAddress(std::net::AddrParseError),
+    BadData,
 }
 
-impl std::error::Error for ServerStreamError {}
+impl std::error::Error for ConnectionError {}
 
-impl Display for ServerStreamError {
+impl Display for ConnectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::IO(io_err) => {
@@ -35,11 +40,23 @@ impl Display for ServerStreamError {
             Self::BigMessage(size) => {
                 write!(f, "message too big: {} bytes", size)
             }
+            Self::BadAddress(addr_err) => {
+                write!(f, "bad address: {}", addr_err)
+            }
+            Self::BadData => {
+                write!(f, "bad data")
+            }
         }
     }
 }
 
-impl From<io::Error> for ServerStreamError {
+impl From<std::net::AddrParseError> for ConnectionError {
+    fn from(value: std::net::AddrParseError) -> Self {
+        Self::BadAddress(value)
+    }
+}
+
+impl From<io::Error> for ConnectionError {
     fn from(value: io::Error) -> Self {
         if value.kind() == io::ErrorKind::UnexpectedEof {
             Self::ConnectionEnded
@@ -49,172 +66,110 @@ impl From<io::Error> for ServerStreamError {
     }
 }
 
-pub type ServerStreamResult<T> = std::result::Result<T, ServerStreamError>;
-type Result<T> = ServerStreamResult<T>;
-
-#[derive(Debug, PartialEq)]
-pub enum ServerStreamStatus {
-    Handshaking,
-    Connected,
+pub enum Incoming {
+    WorldState(lib_spells::net::WorldState),
 }
 
-impl Display for ServerStreamStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Handshaking => write!(f, "handshaking"),
-            Self::Connected => write!(f, "connected"),
-        }
-    }
+pub enum Outgoing {
+    Disconnect,
+    Movement(bevy::math::Vec3),
 }
 
-#[derive(Debug, PartialEq)]
-pub enum ServerStreamMessage {
-    Status(ServerStreamStatus),
-    Data(Vec<u8>),
+#[derive(Debug)]
+pub struct Connection {
+    stream: tcp_stream::ClientStream,
 }
 
-/// Try to create a new world connection from the given address
-pub fn connect(addr: &str) -> Result<ServerStream> {
-    let stream = net::TcpStream::connect(addr)?;
-    ServerStream::handle(stream)
-}
-
-pub struct ServerStream {
-    reader: BufReader<net::TcpStream>,
-    writer: BufWriter<net::TcpStream>,
-}
-
-impl ServerStream {
-    /// Consume a TCP stream as world connection
-    pub fn handle(stream: TcpStream) -> Result<ServerStream> {
-        let writer = io::BufWriter::new(stream.try_clone()?);
-        let reader = io::BufReader::new(stream);
-        Ok(Self { reader, writer })
-    }
-
-    /// Block until data received, and return if the data matches the given.
-    fn expect_line(&mut self, data: &str) -> Result<bool> {
-        let mut buf = data.to_string();
-        buf.clear();
-        self.reader.read_line(&mut buf)?;
-        Ok(buf == data)
-    }
-
-    /// Block until we receive the expected server header response from Spells Server.
-    fn expect_header(&mut self) -> Result<bool> {
-        self.expect_line(lib_spells::SERVER_HEADER)
-    }
-
-    fn write_client_ok(&mut self) -> Result<()> {
-        self.writer
-            .write_all(lib_spells::CLIENT_EXPECT.as_bytes())?;
-        self.writer.flush()?;
+impl Connection {
+    pub fn listen_outgoing(out_rx: mpsc::Receiver<Outgoing>) -> Result<()> {
         Ok(())
     }
 
-    pub fn handshake(&mut self) -> Result<()> {
-        if !self.expect_header()? {
-            return Err(ServerStreamError::InvalidServer);
-        }
-        log::info!("OK header from server");
-        self.write_client_ok()?;
-        log::info!("sent OK");
+    pub fn listen_incoming(inc_tx: mpsc::Sender<Incoming>) -> Result<()> {
         Ok(())
     }
+}
 
-    /// Block and listen to the world stream, sending new informaton to tx. Does handshake first.
-    pub fn listen_handshake(&mut self, tx: Sender<ServerStreamMessage>) -> Result<()> {
-        tx.send(ServerStreamMessage::Status(ServerStreamStatus::Handshaking))
-            .expect("server listen: no receiver");
-        self.handshake()?;
-        tx.send(ServerStreamMessage::Status(ServerStreamStatus::Connected))
-            .expect("server listen: no receiver");
-        self.listen(tx)
-    }
+pub fn get_connection(addr: &str, password: Option<&str>) -> Result<(Connection, lib_spells::net::ClientInfo)> {
+    let mut raw_stream = mio::net::TcpStream::connect(addr.parse()?)?;
+    let mut poll = mio::Poll::new()?;
+    let mut events = mio::Events::with_capacity(128);
+    poll.registry().register(
+        &mut raw_stream,
+        mio::Token(0),
+        mio::Interest::READABLE | mio::Interest::WRITABLE,
+    )?;
 
-    /// Block and listen to the world stream, sending new informaton to tx.
-    pub fn listen(&mut self, tx: Sender<ServerStreamMessage>) -> Result<()> {
-        // wait for length header
-        let mut header_buffer = [0_u8; PREFIX_BYTES];
+    let mut client_stream = tcp_stream::ClientStream::new(raw_stream);
+    poll.poll(&mut events, None)?;
 
-        loop {
-            // read header
-            self.reader.read_exact(&mut header_buffer)?;
-            let message_size: u32 = u32::from_le_bytes(header_buffer);
+    let mut messages = vec![];
+    let mut wrote_pass = false;
 
-            // read message
-            if message_size > MAX_MESSAGE_SIZE {
-                log::info!("big message {}", message_size);
-                return Err(ServerStreamError::BigMessage(message_size));
+    loop {
+        for ev in events.iter() {
+            if ev.is_readable() {
+                read_messages(&mut client_stream, &mut messages)?;
+                println!("read messages");
             }
-
-            let mut message = vec![0; message_size as usize];
-            self.reader.read_exact(&mut message)?;
-            tx.send(ServerStreamMessage::Data(message))
-                .expect("server listen: no state receiver");
+            if !wrote_pass && ev.is_writable() {
+                if let Some(password) = password {
+                    wrote_pass = write_data(&mut client_stream, password.as_bytes())?;
+                    println!("wrote password: {}", wrote_pass);
+                }
+            }
+            if let Some(client_info) = validate_server_messages(&messages)? {
+                println!("verified server");
+                return Ok((Connection { stream: client_stream }, client_info));
+            }
         }
     }
+}
+
+fn validate_server_messages(messages: &[Vec<u8>]) -> Result<Option<lib_spells::net::ClientInfo>> {
+    if let Some(msg) = messages.first() {
+        if msg != lib_spells::SERVER_HEADER {
+            return Err(ConnectionError::InvalidServer);
+        }
+    } else {
+        return Ok(None);
+    }
+
+    let client_info_raw = if let Some(msg) = messages.get(1) {
+        msg
+    } else {
+        return Ok(None);
+    };
+
+    let client_info = match lib_spells::net::ClientInfo::deserialize(client_info_raw) {
+        Ok(ci) => ci,
+        Err(_) => return Err(ConnectionError::BadData),
+    };
+
+    Ok(Some(client_info))
+}
+
+fn read_messages(stream: &mut lib_spells::tcp_stream::ClientStream, messages: &mut Vec<Vec<u8>>) -> Result<()> {
+    match stream.try_read_messages() {
+        Ok(mut received) => {
+            messages.append(&mut received);
+            Ok(())
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn write_data(stream: &mut lib_spells::tcp_stream::ClientStream, data: &[u8]) -> Result<bool> {
+    Ok(stream.try_write_prefixed(data)?)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        io::Write,
-        net::{TcpListener, TcpStream},
-        sync::mpsc,
-        thread,
-    };
-
-    use crate::world_connection::stream::ServerStreamMessage;
-
-    use super::{ServerStream, ServerStreamError};
-
-    struct ListenTest {
-        data: Vec<u8>,
-    }
-
+    use super::*;
     #[test]
-    fn test_listen_loop() {
-        let tests = vec![
-            ListenTest {
-                data: "bingus".as_bytes().to_vec(),
-            },
-            ListenTest {
-                data: "b".as_bytes().to_vec(),
-            },
-            ListenTest {
-                data: "0".as_bytes().to_vec(),
-            },
-            ListenTest { data: vec![5] },
-            ListenTest {
-                data: vec![5, 50, 30],
-            },
-        ];
-
-        for test in tests {
-            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-            let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-            let mut client_to_world_conn = ServerStream::handle(stream).unwrap();
-            let (world_to_client_conn, _) = listener.accept().unwrap();
-
-            let message = test.data;
-            let (tx, rx) = mpsc::channel();
-
-            // write header bytes
-            (&world_to_client_conn)
-                .write_all(&(message.len() as u32).to_le_bytes())
-                .unwrap();
-            // write actual bytes
-            (&world_to_client_conn).write_all(&message).unwrap();
-            let handle = thread::spawn(move || client_to_world_conn.listen(tx));
-            let val = rx.recv().unwrap();
-            assert_eq!(val, ServerStreamMessage::Data(message));
-            world_to_client_conn
-                .shutdown(std::net::Shutdown::Both)
-                .unwrap();
-
-            let val = handle.join().unwrap();
-            assert_eq!(val.unwrap_err(), ServerStreamError::ConnectionEnded);
-        }
+    #[ignore]
+    fn test_client_stream() {
+        get_connection("0.0.0.0:7776", Some("cat")).unwrap();
+        println!("connected");
     }
 }
