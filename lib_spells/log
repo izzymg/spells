@@ -1,0 +1,91 @@
+   Compiling lib_spells v0.1.0 (/home/ysxbel/dev/spells/lib_spells)
+    Finished test [unoptimized + debuginfo] target(s) in 0.87s
+     Running unittests src/lib.rs (target/debug/deps/lib_spells-32eba1bc3892e96a)
+
+running 1 test
+[src/message_stream.rs:201:9] &buf = [
+    3,
+    0,
+    49,
+    50,
+    51,
+    3,
+    0,
+    97,
+    98,
+    99,
+    4,
+    0,
+    122,
+    120,
+    99,
+    98,
+]
+[src/message_stream.rs:69:5] start = 0
+[src/message_stream.rs:69:5] len = 16
+[src/message_stream.rs:75:5] message_len = 3
+[src/message_stream.rs:81:5] our_bit = [
+    3,
+    0,
+    49,
+    50,
+    51,
+    3,
+    0,
+    97,
+    98,
+    99,
+    4,
+    0,
+    122,
+    120,
+    99,
+    98,
+]
+[src/message_stream.rs:69:5] start = 5
+[src/message_stream.rs:69:5] len = 16
+[src/message_stream.rs:75:5] message_len = 3
+[src/message_stream.rs:81:5] our_bit = [
+    3,
+    0,
+    97,
+    98,
+    99,
+    4,
+    0,
+    122,
+    120,
+    99,
+    98,
+]
+[src/message_stream.rs:69:5] start = 10
+[src/message_stream.rs:69:5] len = 16
+[src/message_stream.rs:75:5] message_len = 4
+[src/message_stream.rs:81:5] our_bit = [
+    4,
+    0,
+    122,
+    120,
+    99,
+    98,
+]
+[src/message_stream.rs:69:5] start = 16
+[src/message_stream.rs:69:5] len = 16
+[src/message_stream.rs:204:9] start = 16
+[src/message_stream.rs:204:9] end = 16
+[src/message_stream.rs:204:9] received = [
+    [
+        49,
+    ],
+    [
+        97,
+    ],
+    [
+        122,
+        120,
+    ],
+]
+test message_stream::tests::test_read_messaging ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
