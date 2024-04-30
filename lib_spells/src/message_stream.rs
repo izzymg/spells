@@ -143,7 +143,6 @@ impl<T: io::Read + io::Write> MessageStream<T> {
         match self.stream.read(&mut self.read_buffer[self.last_read..]) {
             Ok(n) if n < 1 => Err(io::ErrorKind::UnexpectedEof.into()),
             Ok(n) => {
-                // todo: handle full buffer lol
                 self.last_read += n;
                 let (start, end, messages) = parse_messages(
                     &self.read_buffer,
@@ -155,11 +154,11 @@ impl<T: io::Read + io::Write> MessageStream<T> {
                 // buffer full
                 if self.last_read >= self.read_buffer.len() {
                     dbg!("buffer full, shifting");
-                    let last_msg = self.read_buffer[start..end].to_vec();
                     self.msg_start = 0;
                     self.msg_end = end - start;
                     self.last_read = self.msg_end;
-                    self.read_buffer[self.msg_start..self.msg_end].copy_from_slice(&last_msg);
+                    let (l, r) = self.read_buffer.split_at_mut(start);
+                    l[self.msg_start..self.msg_end].copy_from_slice(r);
                 } else {
                     self.msg_start = start;
                     self.msg_end = end;
