@@ -1,10 +1,10 @@
-use lib_spells::tcp_stream;
+use lib_spells::message_stream;
 use std::{
     fmt::Display,
     io::{self, Read, Write},
+    ops::Deref,
     sync::mpsc,
     time::Duration,
-    ops::Deref,
 };
 
 const PREFIX_BYTES: usize = 4;
@@ -14,12 +14,13 @@ const SERVER_WRITE_TIMEOUT: Option<Duration> = Some(Duration::from_secs(1));
 
 pub type Result<T> = std::result::Result<T, ConnectionError>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum ConnectionError {
+    IOError(std::io::Error),
+    StreamError(message_stream::MessageStreamError),
     InvalidServer,
     ConnectionEnded,
     BigMessage(u32),
-    IO(io::ErrorKind),
     BadAddress(std::net::AddrParseError),
     BadData,
 }
@@ -29,8 +30,11 @@ impl std::error::Error for ConnectionError {}
 impl Display for ConnectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::IO(io_err) => {
-                write!(f, "IO error: {}", io_err)
+            Self::IOError(err) => {
+                write!(f, "io error: {}", err)
+            }
+            Self::StreamError(err) => {
+                write!(f, "stream error: {}", err)
             }
             Self::InvalidServer => {
                 write!(f, "invalid server response")
@@ -63,13 +67,15 @@ impl From<std::net::AddrParseError> for ConnectionError {
     }
 }
 
-impl From<io::Error> for ConnectionError {
-    fn from(value: io::Error) -> Self {
-        if value.kind() == io::ErrorKind::UnexpectedEof {
-            Self::ConnectionEnded
-        } else {
-            Self::IO(value.kind())
-        }
+impl From<message_stream::MessageStreamError> for ConnectionError {
+    fn from(value: message_stream::MessageStreamError) -> Self {
+        Self::StreamError(value)
+    }
+}
+
+impl From<std::io::Error> for ConnectionError {
+    fn from(value: std::io::Error) -> Self {
+        Self::IOError(value)
     }
 }
 
@@ -80,12 +86,14 @@ pub enum Incoming {
 
 #[derive(Debug)]
 pub struct Connection {
-    stream: tcp_stream::ClientStream,
+    stream: message_stream::MessageStream,
     stamp: u8,
 }
 
 impl Connection {
-    fn read_get_world_state(&mut self) -> Result<Vec<lib_spells::net::WorldState>> {
+    
+    /// Fetch all world state we can read
+    pub fn read_get_world_state(&mut self) -> Result<Vec<lib_spells::net::WorldState>> {
         let messages = self.stream.try_read_messages()?;
         Ok(messages
             .iter()
@@ -96,28 +104,15 @@ impl Connection {
             >>()?)
     }
 
-    pub fn send_input(&mut self, command: u8, data: u8) -> Result<()> {
-        if self.stream.try_write_prefixed(&[command, self.stamp, data])? {
+    /// Returns true if the input was actually sent
+    pub fn send_input(&mut self, command: u8, data: u8) -> Result<bool> {
+        let sent = self
+            .stream
+            .try_write_prefixed(&[command, self.stamp, data])?;
+        if sent {
             self.stamp += 1;
         }
-        Ok(())
-    }
-
-    pub fn listen_incoming(&mut self, inc_tx: mpsc::Sender<Incoming>) -> Result<()> {
-        let mut events = mio::Events::with_capacity(8);
-        let mut poll = mio::Poll::new()?;
-        poll.registry()
-            .register(self.stream.inner(), mio::Token(0), mio::Interest::READABLE)?;
-        loop {
-            poll.poll(&mut events, None)?;
-            for ev in events.iter() {
-                if ev.is_readable() {
-                    for state in self.read_get_world_state()? {
-                        inc_tx.send(Incoming::WorldState(state)).expect("receiver dead");
-                    }
-                }
-            }
-        }
+        Ok(sent)
     }
 }
 
@@ -125,44 +120,35 @@ pub fn get_connection(
     addr: &str,
     password: Option<&str>,
 ) -> Result<(Connection, lib_spells::net::ClientInfo)> {
-    let mut raw_stream = mio::net::TcpStream::connect(addr.parse()?)?;
-    let mut poll = mio::Poll::new()?;
-    let mut events = mio::Events::with_capacity(128);
-    poll.registry().register(
-        &mut raw_stream,
-        mio::Token(0),
-        mio::Interest::READABLE | mio::Interest::WRITABLE,
-    )?;
+    let mut raw_stream = std::net::TcpStream::connect(addr)?;
+    raw_stream.set_nonblocking(true)?;
+    raw_stream.set_nodelay(true)?;
 
-    let mut client_stream = tcp_stream::ClientStream::new(raw_stream);
-    poll.poll(&mut events, None)?;
-
+    let mut message_stream = message_stream::MessageStream::create(raw_stream)?;
     let mut messages = vec![];
     let mut wrote_pass = false;
 
     loop {
-        for ev in events.iter() {
-            if ev.is_readable() {
-                read_messages(&mut client_stream, &mut messages)?;
-                println!("read messages");
-            }
-            if !wrote_pass && ev.is_writable() {
-                if let Some(password) = password {
-                    wrote_pass = write_data(&mut client_stream, password.as_bytes())?;
-                    println!("wrote password: {}", wrote_pass);
-                }
-            }
-            if let Some(client_info) = validate_server_messages(&messages)? {
-                println!("verified server");
-                return Ok((
-                    Connection {
-                        stream: client_stream,
-                        stamp: 0,
-                    },
-                    client_info,
-                ));
+        println!("read messages");
+        if !wrote_pass {
+            if let Some(password) = password {
+                wrote_pass = write_data(&mut message_stream, password.as_bytes())?;
+                println!("wrote password: {}", wrote_pass);
             }
         }
+        read_messages(&mut message_stream, &mut messages)?;
+        dbg!(&messages.len());
+        if let Some(client_info) = validate_server_messages(&messages)? {
+            println!("verified server");
+            return Ok((
+                Connection {
+                    stream: message_stream,
+                    stamp: 0,
+                },
+                client_info,
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
@@ -190,7 +176,7 @@ fn validate_server_messages(messages: &[Vec<u8>]) -> Result<Option<lib_spells::n
 }
 
 fn read_messages(
-    stream: &mut lib_spells::tcp_stream::ClientStream,
+    stream: &mut message_stream::MessageStream,
     messages: &mut Vec<Vec<u8>>,
 ) -> Result<()> {
     let mut received = stream.try_read_messages()?;
@@ -198,7 +184,7 @@ fn read_messages(
     Ok(())
 }
 
-fn write_data(stream: &mut lib_spells::tcp_stream::ClientStream, data: &[u8]) -> Result<bool> {
+fn write_data(stream: &mut message_stream::MessageStream, data: &[u8]) -> Result<bool> {
     Ok(stream.try_write_prefixed(data)?)
 }
 
@@ -208,21 +194,13 @@ mod tests {
     #[test]
     #[ignore]
     fn test_client_stream() {
-        let (conn, client_info) = get_connection("0.0.0.0:7776", Some("cat")).unwrap();
-        let listen_conn = std::sync::Arc::new(conn);
-        let write_conn = listen_conn.clone();
-        println!("connected: {:?}", client_info);
-        let (tx, rx) = mpsc::channel();
-        let listen = move || {
-                listen_conn.deref().listen_incoming(tx);
-        };
-        let read_handle = std::thread::spawn(listen);
-        write_conn.deref().send_input(0, 1).unwrap();
-        println!("sent data");
+        let (mut conn, client_info) = get_connection("0.0.0.0:7776", Some("cat")).unwrap();
+        dbg!(client_info);
         loop {
-            for ev in rx.iter() {
-                dbg!(ev);
-            }
+            let sent = conn.send_input(0, 1).unwrap();
+            println!("sent data? {}", sent);
+            let states = conn.read_get_world_state().unwrap();
+            dbg!(states);
         }
     }
 }

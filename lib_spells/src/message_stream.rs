@@ -4,7 +4,6 @@ use std::io::{self, Read, Write};
 use std::net;
 
 pub const HEADER_BYTES: usize = 2;
-pub const MAX_MESSAGE_BYTES: usize = u16::MAX as usize;
 
 #[derive(Debug)]
 pub enum MessageStreamError {
@@ -51,67 +50,75 @@ fn is_would_block(err: &io::Error) -> bool {
     err.kind() == io::ErrorKind::WouldBlock
 }
 
-fn create_header(data: &[u8]) -> [u8;2] {
+fn create_header(data: &[u8]) -> [u8; 2] {
     (data.len() as u16).to_le_bytes()
 }
 
 /// Attempt to parse 2 bytes into a message length
-fn parse_message_length(buf: &[u8;2]) -> io::Result<usize> {
+fn parse_message_length(buf: &[u8; 2], max: usize) -> io::Result<usize> {
     let to_read = u16::from_le_bytes(*buf) as usize;
-    if to_read < 1 || to_read > MAX_MESSAGE_BYTES {
+    if to_read < 1 || to_read > max {
         return Err(io::ErrorKind::InvalidData.into());
     }
     Ok(to_read)
 }
 
-fn parse_messages(buf: &[u8], start: usize, len: usize, mut messages: Vec<Vec<u8>>) -> Result<(usize, usize, Vec<Vec<u8>>)> {
+/// Recursively parse header-messages from `buf`. Rejects headers for messages that are larger than `buf` + a header.
+fn parse_messages(
+    buf: &[u8],
+    start: usize,
+    len: usize,
+    mut messages: Vec<Vec<u8>>,
+) -> Result<(usize, usize, Vec<Vec<u8>>)> {
     // assume we start from the position of the header
     let our_bit = &buf[start..len];
     if our_bit.len() < HEADER_BYTES {
         return Ok((start, len, messages));
     }
-    let message_len = parse_message_length(our_bit[..HEADER_BYTES].try_into().unwrap())?;
+    let message_len = parse_message_length(
+        our_bit[..HEADER_BYTES].try_into().unwrap(),
+        buf.len() - HEADER_BYTES,
+    )?;
     let total_read_size = HEADER_BYTES + message_len;
     if our_bit.len() < total_read_size {
         // we didn't have enough data for the complete message
         return Ok((start, len, messages));
     }
     // add a full message
-    messages.push(our_bit[HEADER_BYTES..HEADER_BYTES+message_len].to_vec());
+    messages.push(our_bit[HEADER_BYTES..HEADER_BYTES + message_len].to_vec());
     let more = len - (total_read_size);
     if more > 0 {
-        parse_messages(buf, start + total_read_size, len, messages)
+        parse_messages(
+            buf,
+            start + total_read_size,
+            len,
+            messages,
+        )
     } else {
-        Ok((message_len, len, messages))
+        Ok((start + total_read_size, len, messages))
     }
 }
 
-/// Provides for buffered message read & writes to a `mio` TCP stream.
-/// Methods should not `WouldBlock` but drain, buffer & parse header-prefixed data.
 #[derive(Debug)]
 pub struct MessageStream {
     stream: net::TcpStream,
-    addr: String,
 
     read_buffer: Vec<u8>,
-    read_start: usize,
-    read_end: usize,
+    last_read: usize,
+    msg_start: usize,
+    msg_end: usize,
 }
 
 impl MessageStream {
-    /// Consume & configure a stream. Can fail.
-    pub fn create(stream: net::TcpStream) -> io::Result<Self> {
-        let addr = stream.peer_addr()?.to_string();
-
-        stream.set_nonblocking(true)?;
-        stream.set_nodelay(true)?;
-
+    /// Consume a stream as a message stream. You should set options like no_delay, non_blocking
+    /// etc before passing or after via `inner()`. Can fail.
+    pub fn create(stream: net::TcpStream, max_message_bytes: usize) -> Result<Self> {
         Ok(Self {
             stream,
-            read_buffer: vec![0; HEADER_BYTES + MAX_MESSAGE_BYTES],
-            read_start: 0,
-            read_end: 0,
-            addr,
+            read_buffer: vec![0; HEADER_BYTES + max_message_bytes],
+            last_read: 0,
+            msg_start: 0,
+            msg_end: 0,
         })
     }
 
@@ -139,30 +146,29 @@ impl MessageStream {
     /// Returns all readable messages on the stream.
     pub fn try_read_messages(&mut self) -> Result<Vec<Vec<u8>>> {
         let messages = Vec::with_capacity(1);
-        match self.stream.read(&mut self.read_buffer) {
-            Ok(n) if n < 1 => {
-                Err(io::ErrorKind::UnexpectedEof.into())
-            }
+        match self.stream.read(&mut self.read_buffer[self.last_read..]) {
+            Ok(n) if n < 1 => Err(io::ErrorKind::UnexpectedEof.into()),
             Ok(n) => {
-               let (start, end, messages) = parse_messages(&self.read_buffer, self.read_start, self.read_end + n, messages)?;
-               self.read_start = start;
-               self.read_end = end;
-               Ok(messages)
-            }
-            Err(ref io_err) if is_would_block(io_err) => {
+                // todo: handle full buffer lol
+                self.last_read += n;
+                let (start, end, messages) = parse_messages(
+                    &self.read_buffer,
+                    self.msg_start,
+                    self.msg_end + n,
+                    messages,
+                )?;
+                self.msg_start = start;
+                self.msg_end = end;
                 Ok(messages)
             }
-            Err(ref io_err) if is_interrupted(io_err) => {
-                self.try_read_messages()
-            }
-            Err(io_err) => Err(io_err.into())
+            Err(ref io_err) if is_would_block(io_err) => Ok(messages),
+            Err(ref io_err) if is_interrupted(io_err) => self.try_read_messages(),
+            Err(io_err) => Err(io_err.into()),
         }
     }
-}
 
-impl Display for MessageStream {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({})", self.addr)
+    fn max_message_bytes(&self) -> usize {
+        self.read_buffer.len() - HEADER_BYTES
     }
 }
 
@@ -172,26 +178,33 @@ mod tests {
 
     #[test]
     fn test_get_message_length() {
-        const SIZE: usize = MAX_MESSAGE_BYTES - 10;
-        let header = create_header(&[0; SIZE]);
-        let res = parse_message_length(&header);
-        assert!(res.is_ok());
-        assert!(res.unwrap() == SIZE);
+        {
+            const SIZE: usize = 10;
+            let header = create_header(&[0; SIZE]);
+            let res = parse_message_length(&header, SIZE);
+            assert!(res.is_ok());
+            assert!(res.unwrap() == SIZE);
+        }
+        {
+            const SIZE: usize = 15;
+            let header = create_header(&[0; SIZE + 1]);
+            let res = parse_message_length(&header, SIZE);
+            assert!(res.is_err());
+        }
     }
 
     #[test]
     fn test_read_complete_messages() {
-        let messages = [
-            "123".as_bytes(),
-            "abc".as_bytes(),
-            "zxcb".as_bytes(),
-        ];
+        let messages = ["123".as_bytes(), "abc".as_bytes(), "zxcb".as_bytes()];
 
-        let buf = messages.iter().flat_map(|msg| {
-            let header = create_header(msg); 
-            [&header[..], msg].concat()
-        }).collect::<Vec<u8>>();
-    
+        let buf = messages
+            .iter()
+            .flat_map(|msg| {
+                let header = create_header(msg);
+                [&header[..], msg].concat()
+            })
+            .collect::<Vec<u8>>();
+
         let (start, end, received) = parse_messages(&buf, 0, buf.len(), vec![]).unwrap();
         assert!(start == buf.len() && end == buf.len());
         for (i, recv) in received.iter().enumerate() {
@@ -225,7 +238,8 @@ mod tests {
                     Err(_err) => continue,
                 }
             };
-            MessageStream::create(stream).unwrap()
+            MessageStream::create(stream, 100)
+                .unwrap()
                 .try_write_prefixed(message)
                 .unwrap();
         });
