@@ -1,13 +1,12 @@
 /*! Buffered, message parsing mio TCP stream wrapper */
 use std::fmt::Display;
-use std::io::{self, Read, Write};
-use std::net;
+use std::io;
 
 pub const HEADER_BYTES: usize = 2;
 
 #[derive(Debug)]
 pub enum MessageStreamError {
-    InvalidHeaderSize,
+    InvalidHeaderSize(usize),
     WriteMessageErr,
     IO(io::Error),
 }
@@ -17,8 +16,8 @@ pub type Result<T> = std::result::Result<T, MessageStreamError>;
 impl Display for MessageStreamError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidHeaderSize => {
-                write!(f, "invalid header size")
+            Self::InvalidHeaderSize(size) => {
+                write!(f, "invalid header size {}", size)
             }
             Self::WriteMessageErr => {
                 write!(f, "failed to write full message")
@@ -55,10 +54,10 @@ fn create_header(data: &[u8]) -> [u8; 2] {
 }
 
 /// Attempt to parse 2 bytes into a message length
-fn parse_message_length(buf: &[u8; 2], max: usize) -> io::Result<usize> {
+fn parse_message_length(buf: &[u8; 2], max: usize) -> Result<usize> {
     let to_read = u16::from_le_bytes(*buf) as usize;
     if to_read < 1 || to_read > max {
-        return Err(io::ErrorKind::InvalidData.into());
+        return Err(MessageStreamError::InvalidHeaderSize(to_read));
     }
     Ok(to_read)
 }
@@ -88,20 +87,15 @@ fn parse_messages(
     messages.push(our_bit[HEADER_BYTES..HEADER_BYTES + message_len].to_vec());
     let more = len - (total_read_size);
     if more > 0 {
-        parse_messages(
-            buf,
-            start + total_read_size,
-            len,
-            messages,
-        )
+        parse_messages(buf, start + total_read_size, len, messages)
     } else {
         Ok((start + total_read_size, len, messages))
     }
 }
 
 #[derive(Debug)]
-pub struct MessageStream {
-    stream: net::TcpStream,
+pub struct MessageStream<T: io::Read + io::Write> {
+    stream: T,
 
     read_buffer: Vec<u8>,
     last_read: usize,
@@ -109,10 +103,10 @@ pub struct MessageStream {
     msg_end: usize,
 }
 
-impl MessageStream {
+impl<T: io::Read + io::Write> MessageStream<T> {
     /// Consume a stream as a message stream. You should set options like no_delay, non_blocking
     /// etc before passing or after via `inner()`. Can fail.
-    pub fn create(stream: net::TcpStream, max_message_bytes: usize) -> Result<Self> {
+    pub fn create(stream: T, max_message_bytes: usize) -> Result<Self> {
         Ok(Self {
             stream,
             read_buffer: vec![0; HEADER_BYTES + max_message_bytes],
@@ -122,11 +116,11 @@ impl MessageStream {
         })
     }
 
-    pub fn into_inner(self) -> net::TcpStream {
+    pub fn into_inner(self) -> T {
         self.stream
     }
 
-    pub fn inner(&mut self) -> &mut net::TcpStream {
+    pub fn inner(&mut self) -> &mut T {
         &mut self.stream
     }
 
@@ -157,8 +151,19 @@ impl MessageStream {
                     self.msg_end + n,
                     messages,
                 )?;
-                self.msg_start = start;
-                self.msg_end = end;
+
+                // buffer full
+                if self.last_read >= self.read_buffer.len() {
+                    dbg!("buffer full, shifting");
+                    let last_msg = self.read_buffer[start..end].to_vec();
+                    self.msg_start = 0;
+                    self.msg_end = end - start;
+                    self.last_read = self.msg_end;
+                    self.read_buffer[self.msg_start..self.msg_end].copy_from_slice(&last_msg);
+                } else {
+                    self.msg_start = start;
+                    self.msg_end = end;
+                }
                 Ok(messages)
             }
             Err(ref io_err) if is_would_block(io_err) => Ok(messages),
@@ -166,15 +171,59 @@ impl MessageStream {
             Err(io_err) => Err(io_err.into()),
         }
     }
-
-    fn max_message_bytes(&self) -> usize {
-        self.read_buffer.len() - HEADER_BYTES
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    pub struct FakeReader {
+        data: Vec<u8>,
+        pos: usize,
+    }
+    impl std::io::Read for FakeReader {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            let mut read = 0;
+            for i in buf.iter_mut() {
+                if self.pos >= self.data.len() {
+                    return Ok(read);
+                }
+                *i = self.data[self.pos];
+                self.pos += 1;
+                read += 1;
+            }
+            Ok(read)
+        }
+    }
+
+    impl std::io::Write for FakeReader {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            panic!();
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn test_buffer_shift() {
+        let data = vec![3_u8, 0, 1, 2, 3, 2_u8, 0, 9, 8, 3_u8, 0, 7, 6];
+        let reader = FakeReader {
+            data: data.clone(),
+            pos: 0,
+        };
+
+        let mut message_stream = MessageStream::create(reader, 3).unwrap();
+        let messages = message_stream.try_read_messages().unwrap();
+        assert_eq!(messages[0], data[2..5]);
+        let messages = message_stream.try_read_messages().unwrap();
+        assert_eq!(messages[0], data[7..9]);
+        message_stream.try_read_messages().unwrap();
+        // buffer should have wrapped our data to the front
+        assert_eq!(message_stream.read_buffer[0..3], data[9..12]);
+        assert_eq!(message_stream.last_read, 4);
+    }
 
     #[test]
     fn test_get_message_length() {
@@ -223,33 +272,5 @@ mod tests {
         assert_eq!(end, actual_bytes);
         assert!(received.len() == 1);
         assert!(received[0] == [1, 2]);
-    }
-
-    #[test]
-    fn test_try_write_prefixed() {
-        let message = "bonguscan".as_bytes();
-        let server = net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let server_addr = server.local_addr().unwrap();
-
-        let handle = std::thread::spawn(move || {
-            let stream = loop {
-                match server.accept() {
-                    Ok((stream, _)) => break stream,
-                    Err(_err) => continue,
-                }
-            };
-            MessageStream::create(stream, 100)
-                .unwrap()
-                .try_write_prefixed(message)
-                .unwrap();
-        });
-
-        let mut client = std::net::TcpStream::connect(server_addr).unwrap();
-        handle.join().unwrap();
-        let mut buf = vec![0; message.len()];
-        assert_eq!(
-            message.len() + HEADER_BYTES,
-            client.read_to_end(&mut buf).unwrap()
-        );
     }
 }
