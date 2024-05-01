@@ -84,7 +84,7 @@ impl WorldState {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Copy, Clone)]
+#[derive(Deserialize, Serialize, Eq, PartialEq, Hash, Debug, Copy, Clone)]
 pub struct ClientInfo {
     pub you: Entity,
 }

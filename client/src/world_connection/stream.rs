@@ -74,11 +74,6 @@ impl From<std::io::Error> for ConnectionError {
 }
 
 #[derive(Debug)]
-pub enum Incoming {
-    WorldState(lib_spells::net::WorldState),
-}
-
-#[derive(Debug)]
 pub struct Connection {
     stream: message_stream::MessageStream<std::net::TcpStream>,
     stamp: u8,
@@ -100,13 +95,12 @@ impl Connection {
     pub fn read(&mut self) -> Result<Vec<lib_spells::net::WorldState>> {
         let messages = self.stream.try_read_messages()?;
 
-        for pong in messages.iter().filter(|m| message_is_ping(m)) {
-            println!("pong");
+        messages.iter().filter(|m| message_is_ping(m)).for_each(|_| {
             if let Some(last_ping) = self.last_ping {
                 self.last_ping_rtt = Some(Instant::now().duration_since(last_ping));
                 self.last_ping = None;
             }
-        }
+        });
 
         Ok(messages
             .iter()
@@ -156,11 +150,11 @@ pub fn get_connection(
         if !wrote_pass {
             if let Some(password) = password {
                 wrote_pass = write_data(&mut message_stream, password.as_bytes())?;
-                println!("wrote password: {}", wrote_pass);
             }
         }
         read_messages(&mut message_stream, &mut messages)?;
         if let Some(client_info) = validate_server_messages(&messages)? {
+            println!("stream: connection established");
             return Ok((
                 Connection::new(message_stream),
                 client_info,
