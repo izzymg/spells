@@ -224,12 +224,14 @@ mod tests {
         dbg!(client_info);
         loop {
             conn.ping().unwrap();
-            let _ = conn.read();
-            if let Some(latency) = conn.last_ping_rtt {
-                println!("{}us", latency.as_nanos());
-            } else {
-                println!("no latency");
+            let state = conn.read().unwrap();
+            if !state.is_empty() {
+                dbg!(state);
             }
+            if let Some(latency) = conn.last_ping_rtt {
+                println!("{}ms", latency.as_millis());
+            }
+            conn.send_input(0, 1).unwrap();
             std::thread::sleep(Duration::from_millis(500));
         }
     }

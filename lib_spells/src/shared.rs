@@ -1,9 +1,9 @@
 use core::fmt;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 
 use bevy::{log, prelude::*};
 use bincode;
-use serde::{Deserialize, Serialize};
+use serde::{self, Deserialize, Serialize};
 
 pub type SerializationError = bincode::ErrorKind;
 
@@ -109,8 +109,14 @@ impl CastingSpell {
 #[derive(Debug, Copy, Component, Clone, Serialize, Deserialize)]
 pub struct Position(pub Vec3);
 
+/// Unit position delta over time.
+#[derive(Debug, Copy, Component, Clone, Serialize, Deserialize)]
+pub struct Velocity(pub Vec3);
+
 #[derive(Deserialize, Serialize, Copy, Clone, Component, Debug)]
 pub struct Player;
 
 #[derive(Deserialize, Serialize, Clone, Component, Debug)]
 pub struct Name(pub String);
+
+

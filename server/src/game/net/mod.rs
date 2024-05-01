@@ -4,7 +4,14 @@ use crate::game;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool};
 use lib_spells::{net, shared};
 use server::packet;
-use std::{collections::HashMap, sync::mpsc};
+use std::{
+    collections::HashMap,
+    sync::mpsc,
+    time::{Duration, Instant},
+};
+
+#[derive(Component, Debug)]
+struct LastPacketRead(pub Instant);
 
 #[derive(Resource, Debug, Default)]
 struct ActiveClientInfo(server::ActiveClientInfo);
@@ -15,6 +22,8 @@ fn spawn_client(commands: &mut Commands, id: &str) -> Entity {
             shared::Player,
             shared::Name(format!("Player {}", id)),
             shared::Position(Vec3::ZERO),
+            shared::Velocity(Vec3::ZERO),
+            LastPacketRead(Instant::now()),
         ))
         .id()
 }
@@ -65,26 +74,31 @@ fn sys_process_incoming(
 fn sys_process_client_packets(
     In(packets): In<HashMap<Entity, Vec<packet::Packet>>>,
     mut commands: Commands,
-    q_velocity_pos: Query<(&shared::Position, &movement::VelocityInstant)>,
+    q_velocity_pos: Query<(&shared::Position, &shared::Velocity, &LastPacketRead)>,
 ) {
     for (entity, packets) in packets.iter() {
-        let (pos, vel_i) = match q_velocity_pos.get(*entity) {
-            Ok((pos, vel_i)) => (pos, vel_i),
+        let (pos, vel, t) = match q_velocity_pos.get(*entity) {
+            Ok((pos, vel, t)) => (pos, vel, t),
             Err(_) => {
-                log::warn!("skipping packet for invalid entity {:?}", *entity);
+                log::warn!("skipping packet for entity {:?}", *entity);
                 continue;
             }
         };
-        let (new_pos, new_vel_i) = movement::integrate_movement_packets(
+
+        let (new_pos, new_vel, new_t) = movement::integrate_movement_packets(
             pos.0,
-            *vel_i,
+            vel.0,
+            t.0,
             packets
                 .iter()
                 .filter_map(|p| movement::MovementPacket::from_packet(*p)),
         );
-        commands
-            .entity(*entity)
-            .insert((new_vel_i, shared::Position(new_pos)));
+
+        commands.entity(*entity).try_insert((
+            shared::Position(new_pos),
+            shared::Velocity(new_vel),
+            LastPacketRead(new_t),
+        ));
     }
 }
 
