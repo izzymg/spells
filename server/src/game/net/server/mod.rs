@@ -12,9 +12,11 @@ use std::io;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use lib_spells::tcp_stream;
+use lib_spells::message_stream;
 
 use bevy::log;
+
+const MAX_MESSAGE_SIZE: usize = 128;
 
 #[derive(Debug, Default, Clone)]
 /// Information about each active client to be sent to the client.
@@ -108,13 +110,11 @@ impl Server {
         };
 
         loop {
-            self.poll
-                .poll(&mut self.events, Some(MIN_TICK))
-                .expect("poll died");
+            self.poll.poll(&mut self.events, Some(MIN_TICK));
 
             manager.tick();
             manager.collect_dead(|dead| {
-                log::debug!("deregister dead: {}", dead);
+                log::debug!("deregistered dead");
                 self.poll
                     .registry()
                     .deregister(&mut dead.into_inner())
@@ -143,7 +143,7 @@ impl Server {
                             .unwrap();
                         manager.manage_stream(
                             new_token,
-                            tcp_stream::ClientStream::new(stream),
+                            message_stream::MessageStream::create(stream, MAX_MESSAGE_SIZE).expect("stream creation"),
                             ev.is_readable(),
                         );
                     },
@@ -161,8 +161,8 @@ impl Server {
 
 #[cfg(test)]
 mod tests {
-    use std::{io::Read, io::Write, sync::mpsc, thread};
     use super::*;
+    use std::{io::Read, io::Write, sync::mpsc, thread};
 
     #[ignore]
     #[test]

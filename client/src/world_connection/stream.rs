@@ -1,16 +1,10 @@
 use lib_spells::message_stream;
 use std::{
     fmt::Display,
-    io::{self, Read, Write},
-    ops::Deref,
-    sync::mpsc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
-const PREFIX_BYTES: usize = 4;
-const MAX_MESSAGE_SIZE: u32 = 10 * 1000;
-const SERVER_READ_TIMEOUT: Option<Duration> = Some(Duration::from_secs(1));
-const SERVER_WRITE_TIMEOUT: Option<Duration> = Some(Duration::from_secs(1));
+const MAX_MESSAGE_SIZE: u16 = u16::MAX;
 
 pub type Result<T> = std::result::Result<T, ConnectionError>;
 
@@ -86,22 +80,51 @@ pub enum Incoming {
 
 #[derive(Debug)]
 pub struct Connection {
-    stream: message_stream::MessageStream,
+    stream: message_stream::MessageStream<std::net::TcpStream>,
     stamp: u8,
+    last_ping: Option<Instant>,
+    last_ping_rtt: Option<Duration>,
 }
 
 impl Connection {
-    
-    /// Fetch all world state we can read
-    pub fn read_get_world_state(&mut self) -> Result<Vec<lib_spells::net::WorldState>> {
+    pub fn new(stream: message_stream::MessageStream<std::net::TcpStream>) -> Self {
+        Self {
+            stream,
+            stamp: 0,
+            last_ping: None,
+            last_ping_rtt: None,
+        }
+    }
+
+    /// Handle incoming messages from the world
+    pub fn read(&mut self) -> Result<Vec<lib_spells::net::WorldState>> {
         let messages = self.stream.try_read_messages()?;
+
+        for pong in messages.iter().filter(|m| message_is_ping(m)) {
+            println!("pong");
+            if let Some(last_ping) = self.last_ping {
+                self.last_ping_rtt = Some(Instant::now().duration_since(last_ping));
+                self.last_ping = None;
+            }
+        }
+
         Ok(messages
             .iter()
+            .filter(|m| !message_is_ping(m))
             .map(|m| lib_spells::net::WorldState::deserialize(m))
             .collect::<std::result::Result<
                 Vec<lib_spells::net::WorldState>,
                 lib_spells::net::SerializationError,
             >>()?)
+    }
+
+    pub fn ping(&mut self) -> Result<bool> {
+        if self.stream.try_write_prefixed(&[0])? {
+            self.last_ping = Some(Instant::now());
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Returns true if the input was actually sent
@@ -110,7 +133,7 @@ impl Connection {
             .stream
             .try_write_prefixed(&[command, self.stamp, data])?;
         if sent {
-            self.stamp += 1;
+            self.stamp = self.stamp.checked_add(1).unwrap_or(0);
         }
         Ok(sent)
     }
@@ -120,16 +143,16 @@ pub fn get_connection(
     addr: &str,
     password: Option<&str>,
 ) -> Result<(Connection, lib_spells::net::ClientInfo)> {
-    let mut raw_stream = std::net::TcpStream::connect(addr)?;
+    let raw_stream = std::net::TcpStream::connect(addr)?;
     raw_stream.set_nonblocking(true)?;
     raw_stream.set_nodelay(true)?;
 
-    let mut message_stream = message_stream::MessageStream::create(raw_stream)?;
+    let mut message_stream =
+        message_stream::MessageStream::create(raw_stream, MAX_MESSAGE_SIZE.into())?;
     let mut messages = vec![];
     let mut wrote_pass = false;
 
     loop {
-        println!("read messages");
         if !wrote_pass {
             if let Some(password) = password {
                 wrote_pass = write_data(&mut message_stream, password.as_bytes())?;
@@ -137,14 +160,9 @@ pub fn get_connection(
             }
         }
         read_messages(&mut message_stream, &mut messages)?;
-        dbg!(&messages.len());
         if let Some(client_info) = validate_server_messages(&messages)? {
-            println!("verified server");
             return Ok((
-                Connection {
-                    stream: message_stream,
-                    stamp: 0,
-                },
+                Connection::new(message_stream),
                 client_info,
             ));
         }
@@ -176,7 +194,7 @@ fn validate_server_messages(messages: &[Vec<u8>]) -> Result<Option<lib_spells::n
 }
 
 fn read_messages(
-    stream: &mut message_stream::MessageStream,
+    stream: &mut message_stream::MessageStream<std::net::TcpStream>,
     messages: &mut Vec<Vec<u8>>,
 ) -> Result<()> {
     let mut received = stream.try_read_messages()?;
@@ -184,9 +202,17 @@ fn read_messages(
     Ok(())
 }
 
-fn write_data(stream: &mut message_stream::MessageStream, data: &[u8]) -> Result<bool> {
+fn write_data(
+    stream: &mut message_stream::MessageStream<std::net::TcpStream>,
+    data: &[u8],
+) -> Result<bool> {
     Ok(stream.try_write_prefixed(data)?)
 }
+
+fn message_is_ping(message: &[u8]) -> bool {
+    message.len() == 1 && message[0] == 0
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -197,10 +223,14 @@ mod tests {
         let (mut conn, client_info) = get_connection("0.0.0.0:7776", Some("cat")).unwrap();
         dbg!(client_info);
         loop {
-            let sent = conn.send_input(0, 1).unwrap();
-            println!("sent data? {}", sent);
-            let states = conn.read_get_world_state().unwrap();
-            dbg!(states);
+            conn.ping().unwrap();
+            let _ = conn.read();
+            if let Some(latency) = conn.last_ping_rtt {
+                println!("{}us", latency.as_nanos());
+            } else {
+                println!("no latency");
+            }
+            std::thread::sleep(Duration::from_millis(500));
         }
     }
 }

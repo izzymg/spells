@@ -4,20 +4,20 @@ use std::fmt::Display;
 use std::time::{Duration, Instant};
 use std::{io, time};
 
-use super::tcp_stream;
+use lib_spells::message_stream;
 
 const PENDING_TIMEOUT: Duration = Duration::from_millis(1000);
 
 pub enum ClientValidationError {
-    IO(io::Error),
+    StreamError(message_stream::MessageStreamError),
     BadPassword,
 }
 
 impl Display for ClientValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ClientValidationError::IO(io_err) => {
-                write!(f, "IO error: {}", io_err)
+            ClientValidationError::StreamError(err) => {
+                write!(f, "stream error: {}", err)
             }
             ClientValidationError::BadPassword => {
                 write!(f, "wrong password")
@@ -26,22 +26,22 @@ impl Display for ClientValidationError {
     }
 }
 
-impl From<io::Error> for ClientValidationError {
-    fn from(value: io::Error) -> Self {
-        Self::IO(value)
+impl From<message_stream::MessageStreamError> for ClientValidationError {
+    fn from(value: message_stream::MessageStreamError) -> Self {
+        Self::StreamError(value)
     }
 }
 
 #[derive(Debug)]
-struct TimedClient {
+struct TimedClient<T: std::io::Read+  std::io::Write> {
     created_at: time::Instant,
-    stream: tcp_stream::ClientStream,
+    stream: message_stream::MessageStream<T>,
     sent_header: bool,
     validated: bool,
 }
 
-impl TimedClient {
-    pub fn new(client: tcp_stream::ClientStream, passworded: bool) -> Self {
+impl<T: std::io::Read + std::io::Write> TimedClient<T> {
+    pub fn new(client: message_stream::MessageStream<T>, passworded: bool) -> Self {
         Self {
             stream: client,
             created_at: Instant::now(),
@@ -55,7 +55,7 @@ impl TimedClient {
         Instant::now().duration_since(self.created_at) > PENDING_TIMEOUT
     }
 
-    pub fn try_send_header(&mut self) -> io::Result<()> {
+    pub fn try_send_header(&mut self) -> message_stream::Result<()> {
         if self.sent_header {
             return Ok(());
         }
@@ -66,12 +66,12 @@ impl TimedClient {
     }
 }
 
-pub struct PendingClients {
-    pending: HashMap<server::Token, TimedClient>,
+pub struct PendingClients<T: std::io::Read + std::io::Write> {
+    pending: HashMap<server::Token, TimedClient<T>>,
     password: Option<String>,
 }
 
-impl PendingClients {
+impl<T: std::io::Read + std::io::Write> PendingClients<T> {
     pub fn new(password: Option<String>) -> Self {
         Self {
             password,
@@ -79,12 +79,12 @@ impl PendingClients {
         }
     }
 
-    pub fn add_client(&mut self, token: server::Token, client: tcp_stream::ClientStream) {
+    pub fn add_client(&mut self, token: server::Token, client: message_stream::MessageStream<T>) {
         let pending = TimedClient::new(client, self.password.is_some());
         self.pending.insert(token, pending);
     }
 
-    pub fn remove_client(&mut self, token: server::Token) -> Option<tcp_stream::ClientStream> {
+    pub fn remove_client(&mut self, token: server::Token) -> Option<message_stream::MessageStream<T>> {
         Some(self.pending.remove(&token)?.stream)
     }
 
@@ -98,7 +98,7 @@ impl PendingClients {
     }
 
     /// Moves all fully validated streams out to the caller
-    pub fn remove_validated(&mut self) -> Vec<(server::Token, tcp_stream::ClientStream)> {
+    pub fn remove_validated(&mut self) -> Vec<(server::Token, message_stream::MessageStream<T>)> {
         self.pending
             .iter()
             .filter_map(|(t, s)| (s.validated && s.sent_header).then_some(*t))
@@ -109,12 +109,12 @@ impl PendingClients {
     }
 
     /// Returns a list of failed writes.
-    pub fn try_send_headers(&mut self) -> Vec<(server::Token, std::io::Error)> {
+    pub fn try_send_headers(&mut self) -> Vec<(server::Token, ClientValidationError)> {
         self.pending
             .iter_mut()
             .filter_map(|(token, client)| {
                 let res = client.try_send_header();
-                res.is_err().then(|| (*token, res.unwrap_err()))
+                res.is_err().then(|| (*token, res.unwrap_err().into()))
             })
             .collect()
     }

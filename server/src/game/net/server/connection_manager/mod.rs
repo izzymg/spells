@@ -3,20 +3,20 @@ broadcast, etc */
 use crate::game::net::server;
 use bevy::log;
 use std::sync::mpsc;
-use lib_spells::tcp_stream;
+use lib_spells::message_stream;
 
 mod connected_clients;
 mod pending_clients;
 
-pub struct ConnectionManager {
+pub struct ConnectionManager<T: std::io::Read + std::io::Write> {
     inc_tx: mpsc::Sender<server::Incoming>,
     out_rx: mpsc::Receiver<server::Outgoing>,
-    connected: connected_clients::ConnectedClients,
-    pending: pending_clients::PendingClients,
-    dead: Vec<tcp_stream::ClientStream>,
+    connected: connected_clients::ConnectedClients<T>,
+    pending: pending_clients::PendingClients<T>,
+    dead: Vec<message_stream::MessageStream<T>>,
 }
 
-impl ConnectionManager {
+impl<T: std::io::Read + std::io::Write> ConnectionManager<T> {
     pub fn new(
         inc_tx: mpsc::Sender<server::Incoming>,
         out_rx: mpsc::Receiver<server::Outgoing>,
@@ -25,7 +25,7 @@ impl ConnectionManager {
         Self {
             inc_tx,
             out_rx,
-            connected: connected_clients::ConnectedClients::default(),
+            connected: connected_clients::ConnectedClients::<T>::new(),
             pending: pending_clients::PendingClients::new(password),
             dead: vec![],
         }
@@ -45,7 +45,7 @@ impl ConnectionManager {
     pub fn manage_stream(
         &mut self,
         token: server::Token,
-        stream: tcp_stream::ClientStream,
+        stream: message_stream::MessageStream<T>,
         is_readable: bool,
     ) {
         log::info!("pending: {}", token);
@@ -68,7 +68,7 @@ impl ConnectionManager {
 
     pub fn collect_dead<F>(&mut self, f: F)
     where
-        F: FnOnce(tcp_stream::ClientStream) + Copy,
+        F: FnOnce(message_stream::MessageStream<T>) + Copy,
     {
         for stream in self.dead.drain(..) {
             f(stream);
@@ -119,7 +119,7 @@ impl ConnectionManager {
     /// Take all validated pending clients and move them to `connected`
     fn connect_validated_pending(&mut self) {
         for (token, client) in self.pending.remove_validated() {
-            log::info!("client validated & connected: {} {}", token, client);
+            log::info!("client validated & connected: {}", token);
             self.connected.add_client(token, client);
             self.inc_tx
                 .send(server::Incoming::Joined(token))

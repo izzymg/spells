@@ -153,7 +153,6 @@ impl<T: io::Read + io::Write> MessageStream<T> {
 
                 // buffer full
                 if self.last_read >= self.read_buffer.len() {
-                    dbg!("buffer full, shifting");
                     self.msg_start = 0;
                     self.msg_end = end - start;
                     self.last_read = self.msg_end;

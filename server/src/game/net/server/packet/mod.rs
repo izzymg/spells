@@ -1,7 +1,6 @@
 use crate::game::net::server::Token;
 use bevy::prelude::*;
 use std::fmt;
-use std::io;
 use std::time::Instant;
 use strum_macros::FromRepr;
 
@@ -83,23 +82,13 @@ pub(super) enum PacketCommand {
 
 #[derive(Debug)]
 pub enum InvalidPacketError {
-    IoError(io::Error),
     InvalidPayload,
     BadMoveDirection,
-}
-
-impl From<io::Error> for InvalidPacketError {
-    fn from(value: io::Error) -> Self {
-        InvalidPacketError::IoError(value)
-    }
 }
 
 impl fmt::Display for InvalidPacketError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InvalidPacketError::IoError(err) => {
-                write!(f, "io error: {}", err)
-            }
             InvalidPacketError::InvalidPayload => {
                 write!(f, "bad payload formatting")
             }
