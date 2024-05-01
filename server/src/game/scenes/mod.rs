@@ -7,8 +7,6 @@ use std::time::Duration;
 use crate::game::{effect_application, events};
 use bevy::{log, prelude::*};
 
-use super::events::AddAuraEvent;
-
 use lib_spells::shared;
 
 pub fn get_scene(name: &str) -> Option<fn(&mut World)> {

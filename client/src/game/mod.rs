@@ -45,19 +45,6 @@ impl GameCameraBundle {
     }
 }
 
-fn sys_handle_world_messages(
-    world_conn: Res<world_connection::WorldConnection>,
-    mut next_game_state: ResMut<NextState<GameStates>>,
-) {
-    // todo: conn and message might need to be different resources
-    if world_conn.is_changed() {
-        if let Some(world_connection::WorldConnectionMessage::Error(err)) = &world_conn.message {
-            log::info!("kicking back to menu: {}", err);
-            next_game_state.set(GameStates::MainMenu);
-        }
-    }
-}
-
 #[derive(SystemParam)]
 struct WorldStateSysParam<'w, 's> {
     commands: Commands<'w, 's>,
@@ -123,6 +110,7 @@ fn sys_handle_world_state(
     mut sys_params: WorldStateSysParam,
     world_conn: Res<world_connection::WorldConnection>,
 ) {
+    /*
     if !world_conn.is_changed() {
         return;
     }
@@ -155,6 +143,7 @@ fn sys_handle_world_state(
             }
         }
     }
+    */
 }
 
 /// Spawn in the basic game world objects when the game state changes.
@@ -187,7 +176,7 @@ impl Plugin for GamePlugin {
         app.add_systems(OnExit(GameStates::Game), sys_cleanup_game_world);
         app.add_systems(
             Update,
-            (sys_handle_world_messages, sys_handle_world_state)
+            (sys_handle_world_state)
                 .chain()
                 .run_if(in_state(GameStates::Game)),
         );

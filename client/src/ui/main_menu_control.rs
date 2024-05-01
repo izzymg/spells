@@ -19,23 +19,31 @@ pub(super) fn sys_menu_connect_ev(
     mut status: ResMut<ConnectionStatus>,
 ) {
     if let Some(ev) = ev_r.read().last() {
-        commands.run_system_with_input(world_conn.connect_system, ev.address.clone());
+        commands.run_system_with_input(world_conn.connect_system, (ev.address.clone(), None));
         status.status = "connecting...".into();
     }
 }
 
-pub(super) fn sys_update_connection_status(
-    world_conn: Res<world_connection::WorldConnection>,
+pub(super) fn sys_handle_connected(
+    mut connected_ev_r: EventReader<world_connection::ConnectedEvent>,
     mut ui_status: ResMut<ConnectionStatus>,
     mut next_game_state: ResMut<NextState<GameStates>>,
 ) {
-    if let Some(msg) = &world_conn.message {
-        ui_status.status = msg.to_string();
-        if let world_connection::WorldConnectionMessage::Status(
-            world_connection::ServerStreamStatus::Connected,
-        ) = msg
-        {
-            next_game_state.set(GameStates::Game);
+    if connected_ev_r.read().next().is_some() {
+        ui_status.status = "connected".into();
+        next_game_state.set(GameStates::Game);
+    }
+}
+
+pub(super) fn sys_handle_disconnected(
+    mut connected_ev_r: EventReader<world_connection::DisconnectedEvent>,
+    mut ui_status: ResMut<ConnectionStatus>,
+) {
+    if let Some(dc) = connected_ev_r.read().next() {
+        if let Some(err) = &dc.0 {
+            ui_status.status = format!("disconnected: {}", err);
+        } else {
+            ui_status.status = "disconnected for unknown reason".into();
         }
     }
 }
