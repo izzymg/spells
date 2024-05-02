@@ -24,7 +24,7 @@ pub struct WindowPlugin;
 impl Plugin for WindowPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, sys_set_window_settings);
-        app.add_systems(OnEnter(GameStates::Game), sys_lock_cursor);
-        app.add_systems(OnExit(GameStates::Game), sys_unlock_cursor);
+        app.add_systems(OnEnter(GameStates::LoadGame), sys_lock_cursor);
+        app.add_systems(OnExit(GameStates::LoadGame), sys_unlock_cursor);
     }
 }

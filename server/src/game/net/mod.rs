@@ -102,23 +102,6 @@ fn sys_process_client_packets(
     }
 }
 
-fn sys_create_state() -> net::WorldState {
-    net::WorldState::default()
-}
-
-fn sys_update_component_world_state<T: Component + Into<net::EntityState> + Clone>(
-    In(mut world_state): In<net::WorldState>,
-    query: Query<(Entity, &T)>,
-) -> net::WorldState {
-    query.iter().for_each(|(entity, comp)| {
-        // clone is here so components can have uncopyable types like "timer"
-        // however we should check performance of this and consider custom serialization of timer values if performance is bad
-        world_state.update(entity, comp.clone().into());
-    });
-
-    world_state
-}
-
 fn sys_broadcast_state(
     In(world_state): In<net::WorldState>,
     server: NonSend<ServerComms>,
@@ -177,14 +160,8 @@ impl Plugin for NetPlugin {
         app.insert_resource(ActiveClientInfo::default());
         app.add_systems(
             FixedUpdate,
-            ((sys_create_state
-                .pipe(sys_update_component_world_state::<shared::Health>)
-                .pipe(sys_update_component_world_state::<shared::Aura>)
-                .pipe(sys_update_component_world_state::<shared::SpellCaster>)
-                .pipe(sys_update_component_world_state::<shared::CastingSpell>)
-                .pipe(sys_update_component_world_state::<shared::Position>)
-                .pipe(sys_update_component_world_state::<shared::Player>)
-                .pipe(sys_update_component_world_state::<shared::Name>)
+            ((
+                net::query_world_state
                 .pipe(sys_broadcast_state)
                 .map(drop)),)
                 .in_set(game::ServerSets::NetworkSend),

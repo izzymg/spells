@@ -86,7 +86,7 @@ pub(super) fn sys_create_main_menu(mut commands: Commands) {
     });
 }
 
-pub(super) fn sys_cleanup_main_menu(
+pub(super) fn sys_destroy_main_menu(
     mut commands: Commands,
     query: Query<Entity, With<MenuItem>>,
 ) {

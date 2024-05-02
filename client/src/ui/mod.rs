@@ -1,4 +1,5 @@
 mod game_view;
+mod loading_view;
 mod main_menu_control;
 mod main_menu_view;
 mod widgets;
@@ -16,7 +17,15 @@ impl Plugin for UiPlugin {
         );
         app.add_systems(
             OnExit(GameStates::MainMenu),
-            main_menu_view::sys_cleanup_main_menu,
+            main_menu_view::sys_destroy_main_menu,
+        );
+        app.add_systems(
+            OnEnter(GameStates::LoadGame),
+            loading_view::sys_create_loading_ui,
+        );
+        app.add_systems(
+            OnExit(GameStates::LoadGame),
+            loading_view::sys_destroy_loading_ui,
         );
         app.insert_resource(main_menu_control::ConnectionStatus::default());
         app.add_event::<main_menu_control::ConnectEvent>();
@@ -32,7 +41,7 @@ impl Plugin for UiPlugin {
                 widgets::sys_text_input_chars,
                 widgets::sys_text_input_deletions,
             )
-            .run_if(in_state(GameStates::MainMenu))
+                .run_if(in_state(GameStates::MainMenu)),
         );
         app.add_systems(
             Update,
@@ -40,7 +49,7 @@ impl Plugin for UiPlugin {
                 game_view::sys_add_casting_ui,
                 game_view::sys_render_casters_ui,
             )
-            .run_if(in_state(GameStates::Game))
+                .run_if(in_state(GameStates::Game)),
         );
     }
 }

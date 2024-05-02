@@ -31,7 +31,7 @@ pub(super) fn sys_handle_connected(
 ) {
     if connected_ev_r.read().next().is_some() {
         ui_status.status = "connected".into();
-        next_game_state.set(GameStates::Game);
+        next_game_state.set(GameStates::LoadGame);
     }
 }
 

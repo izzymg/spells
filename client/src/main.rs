@@ -14,6 +14,7 @@ use std::{env, error::Error};
 pub enum GameStates {
     #[default]
     MainMenu,
+    LoadGame,
     Game,
 }
 
@@ -66,7 +67,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     } else {
-        app.add_plugins((world_connection::WorldConnectionPlugin, game::GamePlugin));
+        app.add_plugins((
+            world_connection::WorldConnectionPlugin,
+            game::GamePlugin,
+        ));
     }
     app.run();
     Ok(())

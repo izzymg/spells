@@ -1,5 +1,5 @@
 use core::fmt;
-use std::time::{Instant, Duration};
+use std::time::Duration;
 
 use bevy::{log, prelude::*};
 use bincode;
@@ -20,9 +20,8 @@ pub struct Aura {
 }
 
 impl bevy::ecs::entity::MapEntities for Aura {
-    fn map_entities<M: EntityMapper>(&mut self, _entity_mapper: &mut M) {
-        let new_entity = _entity_mapper.map_entity(self.owner);
-        log::debug!("mapping aura {:?} -> {:?}", self.owner, new_entity);
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        let new_entity = entity_mapper.map_entity(self.owner);
         self.owner = new_entity;
     }
 }
