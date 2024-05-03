@@ -6,10 +6,9 @@ impl Plugin for FollowCameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (
-                sys_follow_camera_target,
-                sys_follow_camera_look.after(input::InputSystemSet),
-            ),
+            (sys_follow_camera_look, sys_camera_input)
+                .chain()
+                .after(input::InputSystemSet),
         );
     }
 }
@@ -53,33 +52,12 @@ impl FollowCamera {
     }
 }
 
-fn sys_follow_camera_target(
-    mut camera_query: Query<(&FollowCamera, &mut Transform), Without<FollowCameraTarget>>,
-    target_query: Query<&Transform, With<FollowCameraTarget>>,
-) {
-    let (cam, mut cam_trans) = match camera_query.get_single_mut() {
-        Ok((c, t)) => (c, t),
-        _ => return,
-    };
-    let follow_trans = match target_query.get_single() {
-        Ok(t) => t,
-        _ => return,
-    };
-
-    cam_trans.translation = follow_trans.translation + (Vec3::Z * cam.z_offset);
-}
-
-fn sys_follow_camera_look(
+fn sys_camera_input(
     input_axes: Res<input::ActionAxes>,
-    mut query: Query<(&mut Transform, &mut FollowCamera), Without<FollowCameraTarget>>,
-    target_query: Query<&Transform, With<FollowCameraTarget>>
+    mut query: Query<&mut FollowCamera, Without<FollowCameraTarget>>,
 ) {
-    let (mut cam_trans, mut cam) = match query.get_single_mut() {
-        Ok((ct, c)) => (ct, c),
-        _ => return,
-    };
-    let follow_trans = match target_query.get_single() {
-        Ok(t) => t,
+    let mut cam = match query.get_single_mut() {
+        Ok(ct) => ct,
         _ => return,
     };
     let mut delta_y = input_axes.look.y;
@@ -90,8 +68,29 @@ fn sys_follow_camera_look(
     if cam.invert_yaw {
         delta_x *= -1.0;
     }
+
     cam.pitch = (cam.pitch - (cam.look_sensitivity * delta_y)).clamp(-70.0, 70.0);
     cam.yaw -= cam.look_sensitivity * delta_x;
-    cam_trans.translation = *Transform::from_rotation(Quat::from_axis_angle(Vec3::Y, cam.yaw.to_radians()) * Quat::from_axis_angle(Vec3::X, cam.pitch.to_radians())).forward() * cam.z_offset;
+}
+
+fn sys_follow_camera_look(
+    mut query: Query<(&mut Transform, &mut FollowCamera), Without<FollowCameraTarget>>,
+    target_query: Query<&Transform, With<FollowCameraTarget>>,
+) {
+    let (mut cam_trans, cam) = match query.get_single_mut() {
+        Ok((ct, c)) => (ct, c),
+        _ => return,
+    };
+    let follow_trans = match target_query.get_single() {
+        Ok(t) => t,
+        _ => return,
+    };
+
+    let rot = Transform::from_rotation(
+        Quat::from_axis_angle(Vec3::Y, cam.yaw.to_radians())
+            * Quat::from_axis_angle(Vec3::X, cam.pitch.to_radians()),
+    );
+
+    cam_trans.translation = follow_trans.translation + rot.forward() * cam.z_offset;
     cam_trans.look_at(follow_trans.translation, Vec3::Y);
 }
