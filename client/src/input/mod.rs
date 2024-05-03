@@ -7,6 +7,7 @@ pub enum Action {
     Activate,
     Primary,
     Secondary,
+    Pause,
 }
 
 #[derive(Copy, PartialEq, Debug, Clone)]
@@ -39,24 +40,31 @@ impl ActionAxes {
 }
 
 /// Hardware-type agnostic input button state
-#[derive(Resource, Default, Clone, Debug)]
+#[derive(Resource, Clone, Debug)]
 pub struct ActionButtons {
     map: HashMap<Action, ButtonState>,
 }
 
 impl ActionButtons {
+    fn new(action_map: &InputButtonActionMap) -> Self {
+        // a bit jank but prevents having to write every action manually
+        // if it's mapped, it gets state
+        let mut map = HashMap::default();
+
+        for (_, action) in action_map.0.iter() {
+            map.insert(*action, ButtonState::default());
+        }
+        Self {
+            map,
+        }
+    }
+
     fn set_state(&mut self, action: Action, state: ButtonState) {
         self.map.insert(action, state);
     }
 
-    // lazily creates state for actions
-    pub fn get_button_state(&mut self, action: Action) -> ButtonState {
-        if let Some(state) = self.map.get(&action) {
-            *state
-        } else {
-            self.map.insert(action, ButtonState::default());
-            ButtonState::default()
-        }
+    pub fn get_button_state(&self, action: Action) -> ButtonState {
+         *self.map.get(&action).unwrap()
     }
 }
 
@@ -74,6 +82,7 @@ impl Default for InputButtonActionMap {
     fn default() -> Self {
         Self(HashMap::from([
             (Input::KeyCode(KeyCode::Space), Action::Jump),
+            (Input::KeyCode(KeyCode::Escape), Action::Pause),
             (Input::KeyCode(KeyCode::KeyE), Action::Activate),
             (Input::MouseButton(MouseButton::Left), Action::Primary),
             (Input::MouseButton(MouseButton::Right), Action::Secondary),
@@ -177,9 +186,11 @@ pub struct InputPlugin;
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(KeyAxisMap::default());
-        app.insert_resource(InputButtonActionMap::default());
         app.insert_resource(ActionAxes::default());
-        app.insert_resource(ActionButtons::default());
+
+        let action_map = InputButtonActionMap::default();
+        app.insert_resource(ActionButtons::new(&action_map));
+        app.insert_resource(action_map);
         app.add_systems(
             Update,
             (

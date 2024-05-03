@@ -1,4 +1,4 @@
-use crate::GameStates;
+use crate::{input, GameStates};
 use bevy::{
     prelude::*,
     window::{CursorGrabMode, PresentMode, PrimaryWindow},
@@ -19,12 +19,22 @@ fn sys_set_window_settings(mut window_query: Query<&mut Window, With<PrimaryWind
     primary_window.present_mode = PresentMode::Fifo;
 }
 
+fn escape_pressed(buttons: Res<input::ActionButtons>) -> bool {
+    buttons.get_button_state(input::Action::Pause) == input::ButtonState::Pressed
+}
+
+fn primary_pressed(buttons: Res<input::ActionButtons>) -> bool {
+    buttons.get_button_state(input::Action::Primary) == input::ButtonState::Pressed
+}
+
 pub struct WindowPlugin;
 
 impl Plugin for WindowPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, sys_set_window_settings);
         app.add_systems(OnEnter(GameStates::LoadGame), sys_lock_cursor);
-        app.add_systems(OnExit(GameStates::LoadGame), sys_unlock_cursor);
+        app.add_systems(OnEnter(GameStates::MainMenu), sys_unlock_cursor);
+        app.add_systems(Update, sys_unlock_cursor.run_if(escape_pressed));
+        app.add_systems(Update, sys_lock_cursor.run_if(primary_pressed));
     }
 }
