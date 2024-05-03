@@ -15,7 +15,7 @@ pub struct ConnectEvent {
 pub(super) fn sys_menu_connect_ev(
     mut commands: Commands,
     mut ev_r: EventReader<ConnectEvent>,
-    world_conn: Res<world_connection::WorldConnection>,
+    world_conn: Res<world_connection::WorldConnectSys>,
     mut status: ResMut<ConnectionStatus>,
 ) {
     if let Some(ev) = ev_r.read().last() {

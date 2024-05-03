@@ -4,8 +4,8 @@ use bevy::{
     prelude::*,
     render::{mesh::Indices, render_asset::RenderAssetUsages, render_resource::PrimitiveTopology},
 };
-use std::fmt;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 // Size in world space of voxels
 pub const VOXEL_SIZE: i32 = 1;

@@ -24,11 +24,11 @@ struct Connecting {
 
 /// Stores one shot connect system
 #[derive(Debug, Resource)]
-pub struct WorldConnection {
+pub struct WorldConnectSys {
     pub connect_system: SystemId<(String, Option<String>)>,
 }
 
-impl WorldConnection {
+impl WorldConnectSys {
     fn new(connect_system: SystemId<(String, Option<String>)>) -> Self {
         Self { connect_system }
     }
@@ -107,7 +107,7 @@ impl Plugin for WorldConnectionPlugin {
         app.add_event::<ConnectedEvent>();
         app.add_event::<DisconnectedEvent>();
         app.add_event::<WorldStateEvent>();
-        app.insert_resource(WorldConnection::new(connect_system));
+        app.insert_resource(WorldConnectSys::new(connect_system));
         app.add_systems(Update, (sys_connection, sys_connecting));
     }
 }
@@ -119,7 +119,7 @@ mod test {
     fn test_network_plugin() {
         let mut app = App::new();
         app.add_plugins((TaskPoolPlugin::default(), WorldConnectionPlugin));
-        let connect_sys = app.world.get_resource_mut::<WorldConnection>().unwrap().connect_system;
+        let connect_sys = app.world.get_resource_mut::<WorldConnectSys>().unwrap().connect_system;
         app.world.run_system_with_input(connect_sys, ("127.0.0.1:7776".into(), None)).unwrap();
         loop {
             let ev = app.world.get_resource_mut::<Events<ConnectedEvent>>().unwrap();

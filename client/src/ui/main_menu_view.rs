@@ -45,7 +45,7 @@ pub(super) fn sys_update_status_text(
 }
 
 pub(super) fn sys_create_main_menu(mut commands: Commands) {
-    log::info!("spawning main menu");
+    log::debug!("spawning main menu");
     commands.spawn((Camera2dBundle::default(), MenuItem));
     let layout = commands
         .spawn((
@@ -90,7 +90,7 @@ pub(super) fn sys_destroy_main_menu(
     mut commands: Commands,
     query: Query<Entity, With<MenuItem>>,
 ) {
-    log::info!("cleaning up menu");
+    log::debug!("cleaning up menu");
 
     for entity in query.iter() {
         commands.entity(entity).despawn_recursive();

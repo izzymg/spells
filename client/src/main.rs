@@ -6,6 +6,7 @@ pub mod render;
 pub mod ui;
 pub mod window;
 pub mod world_connection;
+pub mod dev_scenes;
 
 use bevy::{log::LogPlugin, prelude::*};
 use std::{env, error::Error};
@@ -61,6 +62,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         match mode.as_str() {
             "editor" => {
                 app.add_plugins(editor::EditorPlugin);
+            },
+            "followcam" => {
+                app.add_plugins(dev_scenes::DevScenesPlugin {
+                    scene: dev_scenes::Scene::FollowCamera,
+                });
             }
             _ => {
                 panic!("unrecognised: {}", mode)

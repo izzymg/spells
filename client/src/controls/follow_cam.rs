@@ -1,5 +1,5 @@
 use crate::input;
-use bevy::prelude::*;
+use bevy::{log, prelude::*};
 
 pub struct FollowCameraPlugin;
 impl Plugin for FollowCameraPlugin {
@@ -19,11 +19,12 @@ impl Plugin for FollowCameraPlugin {
 pub struct FollowCameraTarget;
 
 /// Tags a camera as capable of follow movement.
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct FollowCamera {
     pub look_sensitivity: f32,
     pub invert_pitch: bool,
     pub invert_yaw: bool,
+    pub z_offset: f32,
     yaw: f32,
     pitch: f32,
 }
@@ -32,10 +33,11 @@ impl Default for FollowCamera {
     fn default() -> Self {
         Self {
             look_sensitivity: 0.5,
-            invert_pitch: false,
+            invert_pitch: true,
             invert_yaw: false,
             yaw: 0.0,
             pitch: 0.0,
+            z_offset: 5.0,
         }
     }
 }
@@ -55,7 +57,7 @@ fn sys_follow_camera_target(
     mut camera_query: Query<(&FollowCamera, &mut Transform), Without<FollowCameraTarget>>,
     target_query: Query<&Transform, With<FollowCameraTarget>>,
 ) {
-    let (_cam, mut cam_trans) = match camera_query.get_single_mut() {
+    let (cam, mut cam_trans) = match camera_query.get_single_mut() {
         Ok((c, t)) => (c, t),
         _ => return,
     };
@@ -64,15 +66,20 @@ fn sys_follow_camera_target(
         _ => return,
     };
 
-    cam_trans.translation = follow_trans.translation;
+    cam_trans.translation = follow_trans.translation + (Vec3::Z * cam.z_offset);
 }
 
 fn sys_follow_camera_look(
     input_axes: Res<input::ActionAxes>,
-    mut query: Query<(&mut Transform, &mut FollowCamera)>,
+    mut query: Query<(&mut Transform, &mut FollowCamera), Without<FollowCameraTarget>>,
+    target_query: Query<&Transform, With<FollowCameraTarget>>
 ) {
     let (mut cam_trans, mut cam) = match query.get_single_mut() {
         Ok((ct, c)) => (ct, c),
+        _ => return,
+    };
+    let follow_trans = match target_query.get_single() {
+        Ok(t) => t,
         _ => return,
     };
     let mut delta_y = input_axes.look.y;
@@ -83,11 +90,8 @@ fn sys_follow_camera_look(
     if cam.invert_yaw {
         delta_x *= -1.0;
     }
-    cam.pitch -= (cam.look_sensitivity * delta_y)
-        .clamp(-90.0, 90.0)
-        .to_radians();
-    cam.yaw -= (cam.look_sensitivity * delta_x).to_radians();
-
-    cam_trans.rotation =
-        Quat::from_axis_angle(Vec3::Y, cam.yaw) * Quat::from_axis_angle(Vec3::X, cam.pitch);
+    cam.pitch = (cam.pitch - (cam.look_sensitivity * delta_y)).clamp(-70.0, 70.0);
+    cam.yaw -= cam.look_sensitivity * delta_x;
+    cam_trans.translation = *Transform::from_rotation(Quat::from_axis_angle(Vec3::Y, cam.yaw.to_radians()) * Quat::from_axis_angle(Vec3::X, cam.pitch.to_radians())).forward() * cam.z_offset;
+    cam_trans.look_at(follow_trans.translation, Vec3::Y);
 }

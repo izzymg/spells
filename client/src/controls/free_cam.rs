@@ -63,13 +63,12 @@ fn sys_free_camera_look(
     if cam.invert_yaw {
         delta_x *= -1.0;
     }
-    cam.pitch -= (cam.look_sensitivity * delta_y)
-        .clamp(-90.0, 90.0)
-        .to_radians();
-    cam.yaw -= (cam.look_sensitivity * delta_x).to_radians();
+    cam.pitch = (cam.pitch - (cam.look_sensitivity * delta_y))
+        .clamp(-90.0, 90.0);
+    cam.yaw -= cam.look_sensitivity * delta_x;
 
     cam_trans.rotation =
-        Quat::from_axis_angle(Vec3::Y, cam.yaw) * Quat::from_axis_angle(Vec3::X, cam.pitch);
+        Quat::from_axis_angle(Vec3::Y, cam.yaw.to_radians()) * Quat::from_axis_angle(Vec3::X, cam.pitch.to_radians());
 }
 
 fn sys_free_camera_move(

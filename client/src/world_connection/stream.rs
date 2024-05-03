@@ -181,7 +181,10 @@ fn validate_server_messages(messages: &[Vec<u8>]) -> Result<Option<lib_spells::n
 
     let client_info = match lib_spells::net::ClientInfo::deserialize(client_info_raw) {
         Ok(ci) => ci,
-        Err(_) => return Err(ConnectionError::BadData),
+        Err(_) => {
+            dbg!(messages);
+            return Err(ConnectionError::BadData)
+        }
     };
 
     Ok(Some(client_info))

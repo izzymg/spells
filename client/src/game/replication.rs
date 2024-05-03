@@ -8,6 +8,10 @@ use bevy::{
     prelude::*,
 };
 
+/// Marks the player that is being controlled by this client
+#[derive(Component, Debug, Default)]
+pub struct ControlledPlayer;
+
 /// Maps World entities to Game entities
 #[derive(Resource, Debug, Default)]
 pub struct WorldGameEntityMap(EntityHashMap<Entity>);
@@ -31,7 +35,6 @@ impl<'w, 's> ReplicationSys<'w, 's> {
         world_entity: Entity,
         mut state: lib_spells::net::EntityState,
     ) {
-        log::debug!("updated state for world entity {:?}", world_entity);
         let game_entity = *self
             .world_to_game
             .0
@@ -65,7 +68,7 @@ impl<'w, 's> ReplicationSys<'w, 's> {
         self.world_to_game.0.contains_key(&world_entity)
     }
 
-    fn dispatch(&mut self, mut state: lib_spells::net::WorldState) {
+    fn integrate(&mut self, mut state: lib_spells::net::WorldState) {
         // find entities we're tracking that don't exist in this state, and kill them
         let lost = self
             .world_to_game
@@ -90,18 +93,28 @@ impl<'w, 's> ReplicationSys<'w, 's> {
             }
             self.update_world_entity(world_entity, state);
         }
+        log::debug!("world state integration done");
+    }
+
+    /// Marks the given world entity as being controlled by this client.
+    fn mark_controlled_player(&mut self, world_entity: Entity) {
+        let game_entity = self.world_to_game.0.get(&world_entity).unwrap();
+        self.commands.entity(*game_entity).insert(ControlledPlayer);
+        log::debug!("controlled player: {:?} -> {:?}", world_entity, game_entity);
     }
 }
 
 /// Build the world and swap the game state.
 pub fn sys_on_first_world_state(
     mut state_events: ResMut<Events<world_connection::WorldStateEvent>>,
+    world_conn: Res<world_connection::Connection>,
     mut replication: ReplicationSys,
     mut next_game_state: ResMut<NextState<GameStates>>,
 ) {
-    for state_ev in state_events.drain() {
+    if let Some(state_ev) = state_events.drain().next() {
         log::info!("got initial world state");
-        replication.dispatch(state_ev.0);
+        replication.integrate(state_ev.0);
+        replication.mark_controlled_player(world_conn.client_info.you);
         next_game_state.set(GameStates::Game);
     }
 }
@@ -112,7 +125,7 @@ pub fn sys_on_world_state(
     mut replication: ReplicationSys,
 ) {
     for state_ev in state_events.drain() {
-        replication.dispatch(state_ev.0);
+        replication.integrate(state_ev.0);
     }
 }
 
@@ -122,4 +135,3 @@ pub fn sys_destroy_gos(mut commands: Commands, go_query: Query<Entity, With<supe
         commands.entity(entity).despawn_recursive();
     }
 }
-
