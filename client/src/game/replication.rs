@@ -29,6 +29,20 @@ pub struct ReplicationSys<'w, 's> {
     world_to_game: ResMut<'w, WorldGameEntityMap>,
 }
 
+pub fn sys_sync_positions(
+    mut commands: Commands,
+    pos_query: Query<
+        (Entity, &lib_spells::shared::Position),
+        Changed<lib_spells::shared::Position>,
+    >,
+) {
+    for (entity, world_pos) in pos_query.iter() {
+        commands
+            .entity(entity)
+            .insert(Transform::from_translation(world_pos.0));
+    }
+}
+
 impl<'w, 's> ReplicationSys<'w, 's> {
     fn update_world_entity(
         &mut self,
