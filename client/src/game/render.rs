@@ -1,4 +1,4 @@
-use crate::{controls, game::replication, game::GameObject};
+use crate::{cameras, game::replication, game::GameObject};
 use bevy::{log, prelude::*};
 use lib_spells::shared;
 
@@ -27,11 +27,11 @@ pub fn sys_setup_player(mut commands: Commands, controlled_query: Query<Entity, 
 
     commands.spawn((
         camera,
-        controls::follow_cam::FollowCamera::default(),
+        cameras::follow_cam::FollowCamera::default(),
         GameObject,
     ));
 
     // tell our camera to follow the controlled player
     let controlled_player_entity = controlled_query.single();
-    commands.entity(controlled_player_entity).insert(controls::follow_cam::FollowCameraTarget);
+    commands.entity(controlled_player_entity).insert(cameras::follow_cam::FollowCameraTarget);
 }

@@ -1,8 +1,8 @@
-pub mod controls;
+pub mod cameras;
 pub mod editor;
 pub mod game;
 pub mod input;
-pub mod render;
+pub mod terrain;
 pub mod ui;
 pub mod window;
 pub mod world_connection;
@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     app.add_plugins((
         input::InputPlugin,
-        render::RenderPlugin,
+        terrain::TerrainPlugin,
         window::WindowPlugin,
         ui::UiPlugin,
     ));

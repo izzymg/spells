@@ -1,5 +1,5 @@
 use crate::input;
-use bevy::{log, prelude::*};
+use bevy::prelude::*;
 
 pub struct FollowCameraPlugin;
 impl Plugin for FollowCameraPlugin {

@@ -260,8 +260,8 @@ fn sys_generate_terrain(
     }
 }
 
-pub struct RenderPlugin;
-impl Plugin for RenderPlugin {
+pub struct TerrainPlugin;
+impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.insert_resource(TerrainAssets::default());
         app.add_event::<GenerateTerrainEvent>();

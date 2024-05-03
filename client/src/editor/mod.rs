@@ -1,11 +1,11 @@
-use crate::{controls::free_cam, input, render, GameStates};
-use bevy::{log, prelude::*};
+use crate::{cameras::free_cam, input, terrain, GameStates};
+use bevy::prelude::*;
 
 #[derive(Resource, Default)]
-struct PlacePreview(render::Voxel);
+struct PlacePreview(terrain::Voxel);
 
 #[derive(Resource, Default)]
-struct EditorTerrain(render::VoxelTerrain);
+struct EditorTerrain(terrain::VoxelTerrain);
 
 fn sys_spawn(mut commands: Commands) {
     commands.spawn((Camera3dBundle::default(), free_cam::FreeCamera::default()));
@@ -27,7 +27,7 @@ fn sys_draw_preview_gizmos(
         .into();
     gizmos.cuboid(
         Transform::from_translation(place_preview.0.into())
-            .with_scale(Vec3::ONE * render::VOXEL_SIZE as f32),
+            .with_scale(Vec3::ONE * terrain::VOXEL_SIZE as f32),
         Color::rgba(0.0, 0.8, 0.8, 0.9),
     );
 }
@@ -35,7 +35,7 @@ fn sys_draw_preview_gizmos(
 fn sys_add_terrain(
     place_preview: ResMut<PlacePreview>,
     mut editor_terrain: ResMut<EditorTerrain>,
-    mut terrain_event_send: EventWriter<render::GenerateTerrainEvent>,
+    mut terrain_event_send: EventWriter<terrain::GenerateTerrainEvent>,
     mut button_state: ResMut<input::ActionButtons>,
 ) {
     if button_state.get_button_state(input::Action::Primary) == input::ButtonState::Pressed {
@@ -44,7 +44,7 @@ fn sys_add_terrain(
         } else {
             editor_terrain.0.add(place_preview.0);
         }
-        terrain_event_send.send(render::GenerateTerrainEvent {
+        terrain_event_send.send(terrain::GenerateTerrainEvent {
             terrain: editor_terrain.0.clone(), //ew
         });
     }

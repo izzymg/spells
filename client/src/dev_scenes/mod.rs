@@ -1,4 +1,4 @@
-use crate::{controls::follow_cam, render};
+use crate::{cameras::follow_cam, terrain};
 use bevy::prelude::*;
 const TERRAIN_SIZE: i32 = 30;
 
@@ -14,7 +14,7 @@ fn sys_dev_follow_cam(
     mut commands: Commands,
     mut mats: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut terrain_ev_w: EventWriter<render::GenerateTerrainEvent>,
+    mut terrain_ev_w: EventWriter<terrain::GenerateTerrainEvent>,
 ) {
     commands.spawn((
         follow_cam::FollowCamera::default(),
@@ -33,14 +33,14 @@ fn sys_dev_follow_cam(
         follow_cam::FollowCameraTarget,
     ));
 
-    let mut terrain = render::VoxelTerrain::default();
+    let mut terrain = terrain::VoxelTerrain::default();
     for x in 0..TERRAIN_SIZE {
         for y in 0..TERRAIN_SIZE {
-            terrain.add(render::Voxel(x, 0, y));
+            terrain.add(terrain::Voxel(x, 0, y));
         }
     }
 
-    terrain_ev_w.send(render::GenerateTerrainEvent { terrain });
+    terrain_ev_w.send(terrain::GenerateTerrainEvent { terrain });
 }
 
 fn sys_move_dev_followed(

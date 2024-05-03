@@ -1,8 +1,9 @@
 mod map;
 mod render;
 mod replication;
+mod controls;
 
-use crate::GameStates;
+use crate::{input, GameStates, cameras};
 use bevy::prelude::*;
 
 #[derive(Component, Debug, Default)]
@@ -12,7 +13,7 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(crate::controls::follow_cam::FollowCameraPlugin);
+        app.add_plugins(cameras::follow_cam::FollowCameraPlugin);
 
         // Replication
         app.insert_resource(replication::WorldGameEntityMap::default());
@@ -35,5 +36,8 @@ impl Plugin for GamePlugin {
             render::sys_render_players
                 .run_if(in_state(GameStates::Game)),
         );
+
+        // Input
+        app.add_systems(Update, controls::sys_player_movement_input.after(input::InputSystemSet));
     }
 }
