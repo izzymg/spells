@@ -7,6 +7,7 @@ pub mod ui;
 pub mod window;
 pub mod world_connection;
 pub mod dev_scenes;
+pub mod debug;
 
 use bevy::{log::LogPlugin, prelude::*};
 use std::{env, error::Error};
@@ -19,6 +20,12 @@ pub enum GameStates {
     Game,
 }
 
+#[derive(SystemSet, Clone, Copy, Hash, Eq, PartialEq, Debug)]
+enum SystemSets {
+    NetReceive,
+    Controls,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let mut app = App::new();
@@ -27,23 +34,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Diagnostics
     #[cfg(debug_assertions)]
     {
-        app.add_plugins(DefaultPlugins.set(LogPlugin {
+        app.add_plugins((DefaultPlugins.set(LogPlugin {
             level: bevy::log::Level::DEBUG,
             filter: "info,wgpu_core=warn,wgpu_hal=warn,spells=debug".into(),
             ..Default::default()
-        }));
-        app.add_plugins((
-            iyes_perf_ui::PerfUiPlugin,
-            bevy::diagnostic::FrameTimeDiagnosticsPlugin,
-            bevy::diagnostic::EntityCountDiagnosticsPlugin,
-            bevy::diagnostic::SystemInformationDiagnosticsPlugin,
-        ));
-
-        app.add_systems(Startup, |mut commands: Commands| {
-            commands.spawn(iyes_perf_ui::PerfUiCompleteBundle::default());
-        });
+        }), debug::DebugPlugin));
     }
 
+    // Release logging
     #[cfg(not(debug_assertions))]
     app.add_plugins(DefaultPlugins.set(LogPlugin {
         level: bevy::log::Level::INFO,

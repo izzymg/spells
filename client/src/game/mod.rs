@@ -1,19 +1,13 @@
-mod controls;
+pub mod controls;
 mod map;
 mod render;
-mod replication;
+pub mod replication;
 
-use crate::{cameras, input, GameStates};
+use crate::{cameras, input, GameStates, SystemSets};
 use bevy::prelude::*;
 
-#[derive(SystemSet, Clone, Copy, Hash, Eq, PartialEq, Debug)]
-enum GameSystemSets {
-    Replicate,
-    Controls,
-}
-
 #[derive(Component, Debug, Default)]
-struct GameObject;
+pub struct GameObject;
 
 pub struct GamePlugin;
 
@@ -33,7 +27,7 @@ impl Plugin for GamePlugin {
                 )
                     .run_if(in_state(GameStates::Game)),
             )
-                .in_set(GameSystemSets::Replicate),
+                .in_set(SystemSets::NetReceive),
         );
         app.add_systems(OnExit(GameStates::Game), replication::sys_destroy_gos);
         // Map
@@ -46,19 +40,24 @@ impl Plugin for GamePlugin {
         );
 
         // Controls
+        app.add_systems(OnEnter(GameStates::Game), controls::sys_setup_controls);
         app.add_systems(
             Update,
-            controls::sys_player_movement_input
-                .in_set(GameSystemSets::Controls),
+            (
+                controls::sys_input_to_wish_dir,
+                controls::sys_predict_player_pos,
+            )
+                .chain()
+                .in_set(SystemSets::Controls),
         );
 
         // Set configuration
         app.configure_sets(
             Update,
-            GameSystemSets::Controls
+            SystemSets::Controls
                 .after(input::InputSystemSet)
-                .after(GameSystemSets::Replicate)
-                .run_if(in_state(GameStates::Game))
+                .after(SystemSets::NetReceive)
+                .run_if(in_state(GameStates::Game)),
         );
     }
 }

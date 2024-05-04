@@ -4,6 +4,7 @@ use bevy::{
     window::{CursorGrabMode, PresentMode, PrimaryWindow},
 };
 
+
 fn sys_lock_cursor(mut window_query: Query<&mut Window, With<PrimaryWindow>>) {
     let mut primary_window = window_query.single_mut();
     primary_window.cursor.grab_mode = CursorGrabMode::Locked;

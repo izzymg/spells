@@ -37,6 +37,7 @@ pub fn sys_sync_positions(
     >,
 ) {
     for (entity, world_pos) in pos_query.iter() {
+        log::debug!("transform sync pass: {:?} {:?}", entity, world_pos);
         commands
             .entity(entity)
             .insert(Transform::from_translation(world_pos.0));

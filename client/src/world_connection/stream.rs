@@ -78,7 +78,7 @@ pub struct Connection {
     stream: message_stream::MessageStream<std::net::TcpStream>,
     stamp: u8,
     last_ping: Option<Instant>,
-    last_ping_rtt: Option<Duration>,
+    pub last_ping_rtt: Option<Duration>,
 }
 
 impl Connection {
@@ -122,13 +122,14 @@ impl Connection {
     }
 
     /// Returns true if the input was actually sent
-    pub fn send_input(&mut self, command: u8, data: u8) -> Result<bool> {
+    pub fn send_command(&mut self, command: u8, data: u8) -> Result<bool> {
         let sent = self
             .stream
             .try_write_prefixed(&[command, self.stamp, data])?;
         if sent {
             self.stamp = self.stamp.checked_add(1).unwrap_or(0);
         }
+        println!("{}, {}, {}", sent, command, data);
         Ok(sent)
     }
 }
@@ -228,7 +229,7 @@ mod tests {
             if let Some(latency) = conn.last_ping_rtt {
                 println!("{}ms", latency.as_millis());
             }
-            conn.send_input(0, 1).unwrap();
+            conn.send_command(0, 1).unwrap();
             std::thread::sleep(Duration::from_millis(500));
         }
     }
