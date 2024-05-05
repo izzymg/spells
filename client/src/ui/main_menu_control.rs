@@ -15,7 +15,7 @@ pub struct ConnectEvent {
 pub(super) fn sys_menu_connect_ev(
     mut commands: Commands,
     mut ev_r: EventReader<ConnectEvent>,
-    world_conn: Res<world_connection::WorldConnection>,
+    world_conn: Res<world_connection::WorldConnectSys>,
     mut status: ResMut<ConnectionStatus>,
 ) {
     if let Some(ev) = ev_r.read().last() {
@@ -31,7 +31,7 @@ pub(super) fn sys_handle_connected(
 ) {
     if connected_ev_r.read().next().is_some() {
         ui_status.status = "connected".into();
-        next_game_state.set(GameStates::Game);
+        next_game_state.set(GameStates::LoadGame);
     }
 }
 

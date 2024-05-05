@@ -1,9 +1,10 @@
 use core::fmt;
-use std::time::{Instant, Duration};
-
-use bevy::{log, prelude::*};
+use std::time::Duration;
 use bincode;
 use serde::{self, Deserialize, Serialize};
+use bevy_ecs::{prelude::*, entity::MapEntities};
+use bevy_time::Timer;
+use bevy_math::prelude::*;
 
 pub type SerializationError = bincode::ErrorKind;
 
@@ -19,10 +20,9 @@ pub struct Aura {
     pub owner: Entity,
 }
 
-impl bevy::ecs::entity::MapEntities for Aura {
-    fn map_entities<M: EntityMapper>(&mut self, _entity_mapper: &mut M) {
-        let new_entity = _entity_mapper.map_entity(self.owner);
-        log::debug!("mapping aura {:?} -> {:?}", self.owner, new_entity);
+impl MapEntities for Aura {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        let new_entity = entity_mapper.map_entity(self.owner);
         self.owner = new_entity;
     }
 }
@@ -100,7 +100,7 @@ impl CastingSpell {
         CastingSpell {
             spell_id,
             target,
-            cast_timer: Timer::new(cast_time, bevy::time::TimerMode::Once),
+            cast_timer: Timer::new(cast_time, bevy_time::TimerMode::Once),
         }
     }
 }

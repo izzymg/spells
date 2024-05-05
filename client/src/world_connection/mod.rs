@@ -1,34 +1,92 @@
 mod stream;
+use crate::game::{controls, replication};
 use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
+use std::time::Duration;
+use lib_spells::net;
+
+const PING_FREQUENCY: Duration = Duration::from_secs(4);
 
 #[derive(Debug, Event)]
 pub struct ConnectedEvent;
 
 #[derive(Debug, Event)]
-pub struct WorldStateEvent(pub lib_spells::net::WorldState);
+pub struct WorldStateEvent(pub net::WorldState);
 
 #[derive(Debug, Event)]
 pub struct DisconnectedEvent(pub Option<stream::ConnectionError>);
 
 #[derive(Resource, Debug)]
 pub struct Connection {
-    conn: stream::Connection,
-    pub client_info: lib_spells::net::ClientInfo,
+    connection: stream::Connection,
+    ping_timer: Timer,
+    pub client_info: net::ClientInfo,
+}
+
+impl Connection {
+    pub fn get_latency(&self) -> Option<Duration> {
+        self.connection.last_ping_rtt
+    }
+    fn new(conn: stream::Connection, client_info: net::ClientInfo) -> Self {
+        Self {
+            connection: conn,
+            client_info,
+            ping_timer: Timer::new(PING_FREQUENCY, TimerMode::Repeating),
+        }
+    }
+
+    fn send_movement_input(&mut self, wish_dir: Vec3) -> stream::Result<()> {
+        self.connection.send_command(0, net::MovementDirection::from(wish_dir).0)?;
+        Ok(())
+    }
+}
+
+pub fn sys_net_send_ping(time: Res<Time>, mut conn: ResMut<Connection>) -> stream::Result<()> {
+    if conn.ping_timer.just_finished() {
+        conn.connection.ping()?;
+        log::debug!("ping");
+    }
+    conn.ping_timer.tick(time.delta());
+    Ok(())
+}
+
+pub fn sys_net_send_movement(
+    mut conn: ResMut<Connection>,
+    wish_dir_query: Query<
+        &controls::WishDir,
+        (
+            Changed<controls::WishDir>,
+            With<replication::ControlledPlayer>,
+        ),
+    >,
+) -> stream::Result<()> {
+    wish_dir_query
+        .iter()
+        .try_for_each(|wd| conn.send_movement_input(wd.0))
+}
+
+fn sys_net_handle_error(
+    In(err): In<stream::Result<()>>,
+    mut dc_ev_w: EventWriter<DisconnectedEvent>,
+) {
+    if let Err(err) = err {
+        log::warn!("caught network send error: {}", err);
+        dc_ev_w.send(DisconnectedEvent(Some(err)));
+    }
 }
 
 // Currently connecting
 #[derive(Resource, Debug)]
 struct Connecting {
-    handle: tasks::Task<stream::Result<(stream::Connection, lib_spells::net::ClientInfo)>>,
+    handle: tasks::Task<stream::Result<(stream::Connection, net::ClientInfo)>>,
 }
 
 /// Stores one shot connect system
 #[derive(Debug, Resource)]
-pub struct WorldConnection {
+pub struct WorldConnectSys {
     pub connect_system: SystemId<(String, Option<String>)>,
 }
 
-impl WorldConnection {
+impl WorldConnectSys {
     fn new(connect_system: SystemId<(String, Option<String>)>) -> Self {
         Self { connect_system }
     }
@@ -40,7 +98,7 @@ fn sys_connection(world: &mut World) {
         Some(connection) => connection.into_inner(),
         None => return,
     };
-    match connection.conn.read() {
+    match connection.connection.read() {
         Ok(states) => {
             for state in states {
                 world
@@ -79,7 +137,7 @@ fn sys_connecting(world: &mut World) {
                 .get_resource_mut::<Events<ConnectedEvent>>()
                 .unwrap()
                 .send(ConnectedEvent);
-            world.insert_resource(Connection { conn, client_info });
+            world.insert_resource(Connection::new(conn, client_info));
         }
         Err(err) => {
             log::info!("connection failure: {}", err);
@@ -99,6 +157,10 @@ fn sys_connect(In((addr, password)): In<(String, Option<String>)>, world: &mut W
     world.insert_resource(Connecting { handle });
 }
 
+fn is_connection(conn: Option<Res<Connection>>) -> bool {
+    conn.is_some()
+}
+
 pub struct WorldConnectionPlugin;
 
 impl Plugin for WorldConnectionPlugin {
@@ -107,26 +169,19 @@ impl Plugin for WorldConnectionPlugin {
         app.add_event::<ConnectedEvent>();
         app.add_event::<DisconnectedEvent>();
         app.add_event::<WorldStateEvent>();
-        app.insert_resource(WorldConnection::new(connect_system));
-        app.add_systems(Update, (sys_connection, sys_connecting));
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    #[test]
-    fn test_network_plugin() {
-        let mut app = App::new();
-        app.add_plugins((TaskPoolPlugin::default(), WorldConnectionPlugin));
-        let connect_sys = app.world.get_resource_mut::<WorldConnection>().unwrap().connect_system;
-        app.world.run_system_with_input(connect_sys, ("127.0.0.1:7776".into(), None)).unwrap();
-        loop {
-            let ev = app.world.get_resource_mut::<Events<ConnectedEvent>>().unwrap();
-            if ev.len() == 1 {
-                break;
-            }
-            app.update();
-        }
+        app.insert_resource(WorldConnectSys::new(connect_system));
+        app.add_systems(
+            Update,
+            (
+                sys_connection,
+                sys_connecting,
+                sys_net_send_ping
+                    .pipe(sys_net_handle_error)
+                    .run_if(is_connection),
+                sys_net_send_movement
+                    .pipe(sys_net_handle_error)
+                    .run_if(is_connection),
+            ),
+        );
     }
 }

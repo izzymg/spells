@@ -4,26 +4,23 @@ use crate::game;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool};
 use lib_spells::{net, shared};
 use server::packet;
-use std::{
-    collections::HashMap,
-    sync::mpsc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::mpsc, time::Instant};
 
 #[derive(Component, Debug)]
-struct LastPacketRead(pub Instant);
+struct LastNetProcess(pub Instant);
 
 #[derive(Resource, Debug, Default)]
 struct ActiveClientInfo(server::ActiveClientInfo);
 
 fn spawn_client(commands: &mut Commands, id: &str) -> Entity {
+    log::debug!("spawning player client entity");
     commands
         .spawn((
             shared::Player,
             shared::Name(format!("Player {}", id)),
             shared::Position(Vec3::ZERO),
             shared::Velocity(Vec3::ZERO),
-            LastPacketRead(Instant::now()),
+            LastNetProcess(Instant::now()),
         ))
         .id()
 }
@@ -33,6 +30,7 @@ fn sys_process_incoming(
     active_client_info: ResMut<ActiveClientInfo>,
     server: NonSend<ServerComms>,
 ) -> HashMap<Entity, Vec<packet::Packet>> {
+    log::debug!("processing");
     let active_client_info = &mut active_client_info.into_inner().0;
     let mut client_packets: HashMap<Entity, Vec<packet::Packet>> = HashMap::default();
 
@@ -74,49 +72,45 @@ fn sys_process_incoming(
 fn sys_process_client_packets(
     In(packets): In<HashMap<Entity, Vec<packet::Packet>>>,
     mut commands: Commands,
-    q_velocity_pos: Query<(&shared::Position, &shared::Velocity, &LastPacketRead)>,
+    q_velocity_pos: Query<(
+        Entity,
+        &shared::Position,
+        &shared::Velocity,
+        &LastNetProcess,
+    )>,
 ) {
-    for (entity, packets) in packets.iter() {
-        let (pos, vel, t) = match q_velocity_pos.get(*entity) {
-            Ok((pos, vel, t)) => (pos, vel, t),
-            Err(_) => {
-                log::warn!("skipping packet for entity {:?}", *entity);
-                continue;
-            }
-        };
-
-        let (new_pos, new_vel, new_t) = movement::integrate_movement_packets(
+    for (entity, pos, vel, t) in q_velocity_pos.iter() {
+        let entity_packets = packets.get(&entity);
+        let (input_pos, input_vel, input_t) = movement::find_position_from_packets(
             pos.0,
             vel.0,
             t.0,
-            packets
-                .iter()
-                .filter_map(|p| movement::MovementPacket::from_packet(*p)),
+            1.0,
+            entity_packets.iter().flat_map(|p| {
+                p.iter()
+                    .filter_map(|p| movement::MovementPacket::from_packet(*p))
+            }),
+        );
+        // Time likely passed since the last received packet. Calculate a new position based on
+        // what we know, up to the current time.
+        let t = Instant::now();
+        let time_since_last_input = t.saturating_duration_since(input_t);
+        let calculated_pos = movement::find_position(input_pos, input_vel, time_since_last_input);
+
+        log::debug!(
+            "calculated {:?} position: {}, velocity: {} (since packet: {}ms)",
+            entity,
+            calculated_pos,
+            input_vel,
+            time_since_last_input.as_millis()
         );
 
-        commands.entity(*entity).try_insert((
-            shared::Position(new_pos),
-            shared::Velocity(new_vel),
-            LastPacketRead(new_t),
+        commands.entity(entity).try_insert((
+            shared::Position(calculated_pos),
+            shared::Velocity(input_vel),
+            LastNetProcess(t),
         ));
     }
-}
-
-fn sys_create_state() -> net::WorldState {
-    net::WorldState::default()
-}
-
-fn sys_update_component_world_state<T: Component + Into<net::EntityState> + Clone>(
-    In(mut world_state): In<net::WorldState>,
-    query: Query<(Entity, &T)>,
-) -> net::WorldState {
-    query.iter().for_each(|(entity, comp)| {
-        // clone is here so components can have uncopyable types like "timer"
-        // however we should check performance of this and consider custom serialization of timer values if performance is bad
-        world_state.update(entity, comp.clone().into());
-    });
-
-    world_state
 }
 
 fn sys_broadcast_state(
@@ -177,16 +171,7 @@ impl Plugin for NetPlugin {
         app.insert_resource(ActiveClientInfo::default());
         app.add_systems(
             FixedUpdate,
-            ((sys_create_state
-                .pipe(sys_update_component_world_state::<shared::Health>)
-                .pipe(sys_update_component_world_state::<shared::Aura>)
-                .pipe(sys_update_component_world_state::<shared::SpellCaster>)
-                .pipe(sys_update_component_world_state::<shared::CastingSpell>)
-                .pipe(sys_update_component_world_state::<shared::Position>)
-                .pipe(sys_update_component_world_state::<shared::Player>)
-                .pipe(sys_update_component_world_state::<shared::Name>)
-                .pipe(sys_broadcast_state)
-                .map(drop)),)
+            ((net::query_world_state.pipe(sys_broadcast_state).map(drop)),)
                 .in_set(game::ServerSets::NetworkSend),
         );
         app.add_systems(

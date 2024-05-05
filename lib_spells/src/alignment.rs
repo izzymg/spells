@@ -1,5 +1,5 @@
 /// For friendlyness/hostility determinations
-use bevy::{ecs::system::SystemParam, prelude::*};
+use bevy_ecs::{system::SystemParam, prelude::*};
 
 pub type Faction = u8;
 

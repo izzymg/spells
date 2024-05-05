@@ -78,7 +78,6 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
                 {
                     Ok(is_done) => {
                         if is_done {
-                            println!("write finished");
                             self.send_targets.insert(*token);
                             return false;
                         }
@@ -90,7 +89,6 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
                     }
                 }
             } else {
-                // keep them to try again
                 true
             }
         });
