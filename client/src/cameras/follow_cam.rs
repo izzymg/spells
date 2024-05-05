@@ -1,4 +1,4 @@
-use crate::input;
+use crate::{SystemSets, input};
 use bevy::prelude::*;
 
 pub struct FollowCameraPlugin;
@@ -8,7 +8,7 @@ impl Plugin for FollowCameraPlugin {
             Update,
             (sys_follow_camera_look, sys_camera_input)
                 .chain()
-                .after(input::InputSystemSet),
+                .in_set(SystemSets::Controls),
         );
     }
 }

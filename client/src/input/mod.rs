@@ -1,3 +1,4 @@
+use crate::SystemSets;
 use bevy::{input::mouse::MouseMotion, prelude::*};
 use std::collections::HashMap;
 
@@ -54,9 +55,7 @@ impl ActionButtons {
         for (_, action) in action_map.0.iter() {
             map.insert(*action, ButtonState::default());
         }
-        Self {
-            map,
-        }
+        Self { map }
     }
 
     fn set_state(&mut self, action: Action, state: ButtonState) {
@@ -64,7 +63,7 @@ impl ActionButtons {
     }
 
     pub fn get_button_state(&self, action: Action) -> ButtonState {
-         *self.map.get(&action).unwrap()
+        *self.map.get(&action).unwrap()
     }
 }
 
@@ -115,16 +114,19 @@ impl Default for KeyAxisMap {
     }
 }
 
-fn input_to_button_state<T: Send + Copy + std::hash::Hash + Eq + Sync>(code: T, input: &ButtonInput<T>) -> ButtonState {
-   if input.just_pressed(code) {
-       ButtonState::Pressed
-   } else if input.just_released(code) {
-       ButtonState::Released
-   } else if input.pressed(code) {
-       ButtonState::Held
-   } else {
-       ButtonState::None
-   }
+fn input_to_button_state<T: Send + Copy + std::hash::Hash + Eq + Sync>(
+    code: T,
+    input: &ButtonInput<T>,
+) -> ButtonState {
+    if input.just_pressed(code) {
+        ButtonState::Pressed
+    } else if input.just_released(code) {
+        ButtonState::Released
+    } else if input.pressed(code) {
+        ButtonState::Held
+    } else {
+        ButtonState::None
+    }
 }
 
 fn sys_process_buttons(
@@ -137,12 +139,10 @@ fn sys_process_buttons(
     let mouse_inputs = mouse_inputs.into_inner();
     for (input, action) in input_buttons.0.iter() {
         let state = match input {
-            Input::KeyCode(key) =>
-                input_to_button_state(*key, key_inputs),
-            Input::MouseButton(btn) =>
-                input_to_button_state(*btn, mouse_inputs)
+            Input::KeyCode(key) => input_to_button_state(*key, key_inputs),
+            Input::MouseButton(btn) => input_to_button_state(*btn, mouse_inputs),
         };
-        
+
         action_state.set_state(*action, state);
     }
 }
@@ -178,9 +178,6 @@ fn sys_clear_axes(mut input_axes: ResMut<ActionAxes>) {
     input_axes.movement = Vec2::ZERO;
 }
 
-#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct InputSystemSet;
-
 pub struct InputPlugin;
 
 impl Plugin for InputPlugin {
@@ -202,7 +199,7 @@ impl Plugin for InputPlugin {
                 ),
             )
                 .chain()
-                .in_set(InputSystemSet),
+                .in_set(SystemSets::Input),
         );
     }
 }

@@ -110,7 +110,7 @@ impl Server {
         };
 
         loop {
-            self.poll.poll(&mut self.events, Some(MIN_TICK));
+            self.poll.poll(&mut self.events, Some(MIN_TICK)).unwrap();
 
             manager.tick();
             manager.collect_dead(|dead| {

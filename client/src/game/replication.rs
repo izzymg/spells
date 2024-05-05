@@ -32,12 +32,13 @@ pub struct ReplicationSys<'w, 's> {
 pub fn sys_sync_positions(
     mut commands: Commands,
     pos_query: Query<
-        (Entity, &lib_spells::shared::Position),
+        (Entity, &lib_spells::shared::Position, &Transform),
         Changed<lib_spells::shared::Position>,
     >,
 ) {
-    for (entity, world_pos) in pos_query.iter() {
-        log::debug!("transform sync pass: {:?} {:?}", entity, world_pos);
+    for (entity, world_pos, actual_pos) in pos_query.iter() {
+        let error_amt = (world_pos.0.length() - actual_pos.translation.length()).abs();
+        log::debug!("transform sync pass: {:?} error: {}", entity, error_amt);
         commands
             .entity(entity)
             .insert(Transform::from_translation(world_pos.0));

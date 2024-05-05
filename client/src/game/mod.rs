@@ -27,7 +27,7 @@ impl Plugin for GamePlugin {
                 )
                     .run_if(in_state(GameStates::Game)),
             )
-                .in_set(SystemSets::NetReceive),
+                .in_set(SystemSets::NetFetch),
         );
         app.add_systems(OnExit(GameStates::Game), replication::sys_destroy_gos);
         // Map
@@ -48,15 +48,7 @@ impl Plugin for GamePlugin {
                 controls::sys_predict_player_pos,
             )
                 .chain()
-                .in_set(SystemSets::Controls),
-        );
-
-        // Set configuration
-        app.configure_sets(
-            Update,
-            SystemSets::Controls
-                .after(input::InputSystemSet)
-                .after(SystemSets::NetReceive)
+                .in_set(SystemSets::Controls)
                 .run_if(in_state(GameStates::Game)),
         );
     }

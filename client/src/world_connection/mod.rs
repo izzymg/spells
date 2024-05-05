@@ -1,5 +1,5 @@
 mod stream;
-use crate::game::{controls, replication};
+use crate::{SystemSets, game::{controls, replication}};
 use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
 use std::time::Duration;
 use lib_spells::net;
@@ -175,12 +175,12 @@ impl Plugin for WorldConnectionPlugin {
             (
                 sys_connection,
                 sys_connecting,
-                sys_net_send_ping
+                (sys_net_send_ping
                     .pipe(sys_net_handle_error)
                     .run_if(is_connection),
                 sys_net_send_movement
                     .pipe(sys_net_handle_error)
-                    .run_if(is_connection),
+                    .run_if(is_connection)).in_set(SystemSets::NetSend),
             ),
         );
     }

@@ -100,6 +100,7 @@ impl Connection {
             .filter(|m| message_is_ping(m))
             .for_each(|_| {
                 if let Some(last_ping) = self.last_ping {
+                    bevy::log::debug!("pong");
                     self.last_ping_rtt = Some(Instant::now().duration_since(last_ping));
                     self.last_ping = None;
                 }
@@ -132,7 +133,7 @@ impl Connection {
         if sent {
             self.stamp = self.stamp.checked_add(1).unwrap_or(0);
         }
-        println!("sent command: {}, {}, {}", sent, command, data);
+        bevy::log::debug!("sent command: {}, {}, {}", sent, command, data);
         Ok(sent)
     }
 }
@@ -222,7 +223,6 @@ mod tests {
             Instant::now().duration_since(init_time).as_millis()
         );
         conn.send_command(0, 1).unwrap();
-        println!("!!!!!");
         let sent_first_cmd_time = Instant::now();
         loop {
             let state = conn.read().unwrap();

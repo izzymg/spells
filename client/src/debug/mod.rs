@@ -11,11 +11,11 @@ pub struct DebugPlugin;
 struct WorldLatencyUi;
 
 impl PerfUiEntry for WorldLatencyUi {
-    type Value = u128;
+    type Value = f64;
     type SystemParam = Option<SRes<world_connection::Connection>>;
 
     fn label(&self) -> &str {
-        "World ms (rtt)"
+        "World Latency (RTT)"
     }
 
     fn sort_key(&self) -> i32 {
@@ -29,10 +29,16 @@ impl PerfUiEntry for WorldLatencyUi {
     ) -> Option<Self::Value> {
         if let Some(conn) = conn {
             if let Some(latency) = conn.get_latency() {
-                return Some(latency.as_millis());
+                return Some(latency.as_secs_f64() * 1000.0);
             }
         }
         None
+    }
+
+    fn format_value(&self, value: &Self::Value) -> String {
+        let mut s = iyes_perf_ui::utils::format_pretty_float(2, 3, *value);
+        s.push_str(" ms");
+        s
     }
 }
 
@@ -41,7 +47,7 @@ impl PerfUiEntry for WorldLatencyUi {
 struct PlayerLocationUi;
 
 impl PerfUiEntry for PlayerLocationUi {
-    type Value = String;
+    type Value = Vec3;
     type SystemParam = SQuery<Read<Transform>, With<replication::ControlledPlayer>>;
 
     fn label(&self) -> &str {
@@ -53,12 +59,16 @@ impl PerfUiEntry for PlayerLocationUi {
         -1
     }
 
+    fn format_value(&self, value: &Self::Value) -> String {
+        format!("{}, {}, {}", value.x, value.y, value.z)
+    }
+
     fn update_value(
         &self,
         transform: &mut <Self::SystemParam as SystemParam>::Item<'_, '_>,
     ) -> Option<Self::Value> {
         if let Ok(tr) = transform.get_single() {
-            Some(format!("{}, {}, {}", tr.translation.x, tr.translation.y, tr.translation.z))
+            Some(tr.translation)
         } else {
             None
         }

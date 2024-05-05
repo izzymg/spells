@@ -119,25 +119,23 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
         }
     }
 
-    pub fn get_send_targets(&self) -> Vec<server::Token> {
-        self.map.keys().copied().collect()
-    }
-
     pub fn has_client(&self, token: server::Token) -> bool {
         self.map.contains_key(&token)
     }
 
     /// Returns a list of failed writes
-    pub fn send_to(
+    pub fn broadcast(
         &mut self,
-        _clients: &[server::Token],
         data: &[u8],
     ) -> Vec<(server::Token, message_stream::MessageStreamError)> {
-        self.map
-            .iter_mut()
-            .filter_map(|(token, client)| {
-                let res = client.stream.try_write_prefixed(data);
-                res.is_err().then(|| (*token, res.unwrap_err()))
+        self.send_targets
+            .iter()
+            .filter_map(|token| {
+                if let Some(client) = self.map.get_mut(token) {
+                    let res = client.stream.try_write_prefixed(data);
+                    return res.is_err().then(|| (*token, res.unwrap_err()))
+                }
+                None
             })
             .collect()
     }

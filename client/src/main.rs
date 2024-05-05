@@ -1,4 +1,6 @@
 pub mod cameras;
+pub mod debug;
+pub mod dev_scenes;
 pub mod editor;
 pub mod game;
 pub mod input;
@@ -6,8 +8,6 @@ pub mod terrain;
 pub mod ui;
 pub mod window;
 pub mod world_connection;
-pub mod dev_scenes;
-pub mod debug;
 
 use bevy::{log::LogPlugin, prelude::*};
 use std::{env, error::Error};
@@ -22,8 +22,10 @@ pub enum GameStates {
 
 #[derive(SystemSet, Clone, Copy, Hash, Eq, PartialEq, Debug)]
 enum SystemSets {
-    NetReceive,
+    NetFetch,
+    NetSend,
     Controls,
+    Input,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -31,14 +33,28 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut app = App::new();
     app.init_state::<GameStates>();
 
+    app.configure_sets(
+        Update,
+        (
+            SystemSets::NetFetch,
+            SystemSets::Input,
+            SystemSets::Controls,
+            SystemSets::NetSend,
+        )
+            .chain(),
+    );
+
     // Diagnostics
     #[cfg(debug_assertions)]
     {
-        app.add_plugins((DefaultPlugins.set(LogPlugin {
-            level: bevy::log::Level::DEBUG,
-            filter: "info,wgpu_core=warn,wgpu_hal=warn,spells=debug".into(),
-            ..Default::default()
-        }), debug::DebugPlugin));
+        app.add_plugins((
+            DefaultPlugins.set(LogPlugin {
+                level: bevy::log::Level::DEBUG,
+                filter: "info,wgpu_core=warn,wgpu_hal=warn,spells=debug".into(),
+                ..Default::default()
+            }),
+            debug::DebugPlugin,
+        ));
     }
 
     // Release logging
@@ -60,7 +76,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         match mode.as_str() {
             "editor" => {
                 app.add_plugins(editor::EditorPlugin);
-            },
+            }
             "followcam" => {
                 app.add_plugins(dev_scenes::DevScenesPlugin {
                     scene: dev_scenes::Scene::FollowCamera,
@@ -71,10 +87,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     } else {
-        app.add_plugins((
-            world_connection::WorldConnectionPlugin,
-            game::GamePlugin,
-        ));
+        app.add_plugins((world_connection::WorldConnectionPlugin, game::GamePlugin));
     }
     app.run();
     Ok(())

@@ -30,7 +30,6 @@ fn sys_process_incoming(
     active_client_info: ResMut<ActiveClientInfo>,
     server: NonSend<ServerComms>,
 ) -> HashMap<Entity, Vec<packet::Packet>> {
-    log::debug!("processing");
     let active_client_info = &mut active_client_info.into_inner().0;
     let mut client_packets: HashMap<Entity, Vec<packet::Packet>> = HashMap::default();
 
@@ -43,12 +42,20 @@ fn sys_process_incoming(
                         you: spawn_client(&mut commands, &token.to_string()),
                     },
                 );
+                server
+                    .outgoing
+                    .send(server::Outgoing::ClientInfo(active_client_info.clone()))
+                    .unwrap();
             }
             server::Incoming::Left(token) => {
                 commands
                     .entity(active_client_info.0.get(&token).unwrap().you)
                     .despawn_recursive();
                 active_client_info.0.remove(&token);
+                server
+                    .outgoing
+                    .send(server::Outgoing::ClientInfo(active_client_info.clone()))
+                    .unwrap();
             }
             server::Incoming::Data(token, packet) => {
                 let entity = active_client_info.0.get(&token).unwrap().you;
@@ -62,10 +69,6 @@ fn sys_process_incoming(
     }
 
     // pass an updated copy of our client info
-    server
-        .outgoing
-        .send(server::Outgoing::ClientInfo(active_client_info.clone()))
-        .unwrap();
     client_packets
 }
 
