@@ -189,20 +189,6 @@ pub struct WorldState {
 }
 
 impl WorldState {
-    pub fn serialize(&self) -> Result<Vec<u8>, SerializationError> {
-        match bincode::serialize(&self) {
-            Ok(data) => Ok(data),
-            Err(err) => Err(*err),
-        }
-    }
-
-    pub fn deserialize(data: &[u8]) -> Result<WorldState, SerializationError> {
-        match bincode::deserialize::<WorldState>(data) {
-            Ok(state) => Ok(state),
-            Err(e) => Err(*e),
-        }
-    }
-
     /// Push `new_state` into the map, calling `update` on the existing state if it exists
     pub fn update(&mut self, key: Entity, new_state: EntityState) {
         if let Some(existing) = self.entity_state_map.get(&key) {
@@ -219,20 +205,20 @@ pub struct ClientInfo {
     pub you: Entity,
 }
 
-impl ClientInfo {
-    pub fn serialize(&self) -> Result<Vec<u8>, SerializationError> {
-        match bincode::serialize(&self) {
-            Ok(data) => Ok(data),
-            Err(err) => Err(*err),
-        }
-    }
-    pub fn deserialize(data: &[u8]) -> Result<ClientInfo, SerializationError> {
-        match bincode::deserialize::<ClientInfo>(data) {
-            Ok(info) => Ok(info),
-            Err(err) => Err(*err),
-        }
+pub fn serialize<T: Serialize>(data: &T) -> Result<Vec<u8>, SerializationError> {
+    match bincode::serialize(data) {
+        Ok(data) => Ok(data),
+        Err(err) => Err(*err),
     }
 }
+
+pub fn deserialize<'a, T: Deserialize<'a>>(data: &'a [u8]) -> Result<T, SerializationError> {
+    match bincode::deserialize::<'a, T>(data) {
+        Ok(state) => Ok(state),
+        Err(e) => Err(*e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

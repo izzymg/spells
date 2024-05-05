@@ -75,22 +75,20 @@ impl<T: std::io::Read + std::io::Write> ConnectionManager<T> {
         }
     }
 
-fn check_outgoing(&mut self) {
+    fn check_outgoing(&mut self) {
         self.out_rx
             .try_iter()
             .collect::<Vec<server::Outgoing>>()
             .into_iter()
-            .for_each(|out| {
-                match out {
-                    server::Outgoing::Broadcast(data) => {
-                        self.connected.broadcast(&data);
-                    }
-                    server::Outgoing::Kick(token) => {
-                        self.kick_client(token);
-                    }
-                    server::Outgoing::ClientInfo(info) => {
-                        self.connected.set_current_client_info(info);
-                    }
+            .for_each(|out| match out {
+                server::Outgoing::Broadcast(data) => {
+                    self.connected.broadcast(data);
+                }
+                server::Outgoing::Kick(token) => {
+                    self.kick_client(token);
+                }
+                server::Outgoing::ClientInfo(info) => {
+                    self.connected.set_current_client_info(info);
                 }
             });
     }

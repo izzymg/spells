@@ -4,7 +4,8 @@ use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
 use std::time::Duration;
 use lib_spells::net;
 
-const PING_FREQUENCY: Duration = Duration::from_secs(4);
+const PING_FREQ: Duration = Duration::from_secs(4);
+const MOVE_FREQ: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Event)]
 pub struct ConnectedEvent;
@@ -19,6 +20,7 @@ pub struct DisconnectedEvent(pub Option<stream::ConnectionError>);
 pub struct Connection {
     connection: stream::Connection,
     ping_timer: Timer,
+    move_timer: Timer,
     pub client_info: net::ClientInfo,
 }
 
@@ -26,11 +28,13 @@ impl Connection {
     pub fn get_latency(&self) -> Option<Duration> {
         self.connection.last_ping_rtt
     }
+
     fn new(conn: stream::Connection, client_info: net::ClientInfo) -> Self {
         Self {
             connection: conn,
             client_info,
-            ping_timer: Timer::new(PING_FREQUENCY, TimerMode::Repeating),
+            ping_timer: Timer::new(PING_FREQ, TimerMode::Repeating),
+            move_timer: Timer::new(MOVE_FREQ, TimerMode::Repeating),
         }
     }
 
@@ -41,11 +45,11 @@ impl Connection {
 }
 
 pub fn sys_net_send_ping(time: Res<Time>, mut conn: ResMut<Connection>) -> stream::Result<()> {
+    conn.ping_timer.tick(time.delta());
     if conn.ping_timer.just_finished() {
         conn.connection.ping()?;
         log::debug!("ping");
     }
-    conn.ping_timer.tick(time.delta());
     Ok(())
 }
 
@@ -53,15 +57,17 @@ pub fn sys_net_send_movement(
     mut conn: ResMut<Connection>,
     wish_dir_query: Query<
         &controls::WishDir,
-        (
-            Changed<controls::WishDir>,
-            With<replication::ControlledPlayer>,
-        ),
+        With<replication::ControlledPlayer>,
     >,
+    time: Res<Time>,
 ) -> stream::Result<()> {
-    wish_dir_query
-        .iter()
-        .try_for_each(|wd| conn.send_movement_input(wd.0))
+    conn.move_timer.tick(time.delta());
+    if conn.move_timer.just_finished() {
+        return wish_dir_query
+            .iter()
+            .try_for_each(|wd| conn.send_movement_input(wd.0));
+    }
+    Ok(())
 }
 
 fn sys_net_handle_error(
@@ -94,28 +100,27 @@ impl WorldConnectSys {
 
 /// Check for disconnection and dispatch incoming data.
 fn sys_connection(world: &mut World) {
-    let connection = match world.get_resource_mut::<Connection>() {
-        Some(connection) => connection.into_inner(),
-        None => return,
-    };
-    match connection.connection.read() {
-        Ok(states) => {
-            for state in states {
+    world.resource_scope(|world, mut connection: Mut<Connection>| {
+        match connection.connection.read() {
+            Ok(reads) => {
+                for (stamp, state) in reads {
+                    log::info!("desync: {}", &connection.connection.stamp() - stamp);
+                    world
+                        .get_resource_mut::<Events<WorldStateEvent>>()
+                        .unwrap()
+                        .send(WorldStateEvent(state));
+                }
+            }
+            Err(err) => {
+                log::debug!("removed connection resource: {:?}", err);
                 world
-                    .get_resource_mut::<Events<WorldStateEvent>>()
+                    .get_resource_mut::<Events<DisconnectedEvent>>()
                     .unwrap()
-                    .send(WorldStateEvent(state));
+                    .send(DisconnectedEvent(Some(err)));
+                world.remove_resource::<Connection>();
             }
         }
-        Err(err) => {
-            world
-                .get_resource_mut::<Events<DisconnectedEvent>>()
-                .unwrap()
-                .send(DisconnectedEvent(Some(err)));
-            world.remove_resource::<Connection>();
-            log::debug!("removed connection resource");
-        }
-    }
+    });
 }
 
 fn sys_connecting(world: &mut World) {
@@ -173,7 +178,7 @@ impl Plugin for WorldConnectionPlugin {
         app.add_systems(
             Update,
             (
-                sys_connection,
+                sys_connection.run_if(|c: Option<Res<Connection>>| c.is_some()),
                 sys_connecting,
                 (sys_net_send_ping
                     .pipe(sys_net_handle_error)

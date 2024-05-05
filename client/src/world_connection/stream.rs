@@ -91,8 +91,12 @@ impl Connection {
         }
     }
 
+    pub fn stamp(&self) -> u8 {
+        self.stamp
+    }
+
     /// Handle incoming messages from the world
-    pub fn read(&mut self) -> Result<Vec<lib_spells::net::WorldState>> {
+    pub fn read(&mut self) -> Result<Vec<(u8, lib_spells::net::WorldState)>> {
         let messages = self.stream.try_read_messages()?;
 
         messages
@@ -106,14 +110,11 @@ impl Connection {
                 }
             });
 
-        Ok(messages
+        messages
             .iter()
             .filter(|m| !message_is_ping(m))
-            .map(|m| lib_spells::net::WorldState::deserialize(m))
-            .collect::<std::result::Result<
-                Vec<lib_spells::net::WorldState>,
-                lib_spells::net::SerializationError,
-            >>()?)
+            .map(|m| deserialize_world_state_message(m))
+            .collect::<Result<Vec<(u8, lib_spells::net::WorldState)>>>()
     }
 
     pub fn ping(&mut self) -> Result<bool> {
@@ -133,9 +134,19 @@ impl Connection {
         if sent {
             self.stamp = self.stamp.checked_add(1).unwrap_or(0);
         }
-        bevy::log::debug!("sent command: {}, {}, {}", sent, command, data);
         Ok(sent)
     }
+}
+
+/// Get the first stamp byte, parse the rest as world state
+fn deserialize_world_state_message(data: &[u8]) -> Result<(u8, lib_spells::net::WorldState)> {
+    if data.is_empty() {
+        return Err(ConnectionError::BadData);
+    }
+
+    let stamp = u8::from_le_bytes(data[0..1].try_into().unwrap());
+    let state: lib_spells::net::WorldState = lib_spells::net::deserialize(&data[1..])?;
+    Ok((stamp, state))
 }
 
 pub fn get_connection(
@@ -179,7 +190,7 @@ fn validate_server_messages(messages: &[Vec<u8>]) -> Result<Option<lib_spells::n
         return Ok(None);
     };
 
-    let client_info = match lib_spells::net::ClientInfo::deserialize(client_info_raw) {
+    let client_info = match lib_spells::net::deserialize(client_info_raw) {
         Ok(ci) => ci,
         Err(_) => {
             dbg!(messages);

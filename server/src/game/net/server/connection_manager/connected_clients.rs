@@ -72,10 +72,8 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
         self.needs_info.retain(|token| {
             if let Some(info) = self.current_client_info.0.get(token) {
                 let conn_client = self.map.get_mut(token).unwrap();
-                match conn_client
-                    .stream
-                    .try_write_prefixed(&info.serialize().unwrap())
-                {
+                let data = lib_spells::net::serialize(info).unwrap();
+                match conn_client.stream.try_write_prefixed(&data) {
                     Ok(is_done) => {
                         if is_done {
                             self.send_targets.insert(*token);
@@ -126,14 +124,16 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
     /// Returns a list of failed writes
     pub fn broadcast(
         &mut self,
-        data: &[u8],
+        state: lib_spells::net::WorldState,
     ) -> Vec<(server::Token, message_stream::MessageStreamError)> {
+        let serialized_state = lib_spells::net::serialize(&state).unwrap();
         self.send_targets
             .iter()
             .filter_map(|token| {
                 if let Some(client) = self.map.get_mut(token) {
-                    let res = client.stream.try_write_prefixed(data);
-                    return res.is_err().then(|| (*token, res.unwrap_err()))
+                    let data = [&[client.stamp.unwrap_or(0)], &serialized_state[..]].concat();
+                    let res = client.stream.try_write_prefixed(&data);
+                    return res.is_err().then(|| (*token, res.unwrap_err()));
                 }
                 None
             })

@@ -68,7 +68,7 @@ pub enum Incoming {
 #[derive(Debug)]
 pub enum Outgoing {
     Kick(Token),
-    Broadcast(Vec<u8>),
+    Broadcast(lib_spells::net::WorldState),
     ClientInfo(ActiveClientInfo),
 }
 

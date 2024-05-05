@@ -100,14 +100,6 @@ fn sys_process_client_packets(
         let time_since_last_input = t.saturating_duration_since(input_t);
         let calculated_pos = movement::find_position(input_pos, input_vel, time_since_last_input);
 
-        log::debug!(
-            "calculated {:?} position: {}, velocity: {} (since packet: {}ms)",
-            entity,
-            calculated_pos,
-            input_vel,
-            time_since_last_input.as_millis()
-        );
-
         commands.entity(entity).try_insert((
             shared::Position(calculated_pos),
             shared::Velocity(input_vel),
@@ -120,20 +112,15 @@ fn sys_broadcast_state(
     In(world_state): In<net::WorldState>,
     server: NonSend<ServerComms>,
     mut exit_events: ResMut<Events<app::AppExit>>,
-) -> net::WorldState {
+) {
     if server
         .outgoing
-        .send(server::Outgoing::Broadcast(
-            world_state
-                .serialize()
-                .expect("world serialization failure"),
-        ))
+        .send(server::Outgoing::Broadcast(world_state))
         .is_err()
     {
         log::info!("client sender died, exiting");
         exit_events.send(app::AppExit);
     }
-    world_state
 }
 
 struct ServerComms {
