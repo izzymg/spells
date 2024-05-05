@@ -17,8 +17,8 @@ opt-level = 3
 bevy = { version = "0.13.1", default-features = false, features = ["multi-threaded", "bevy_asset", "dynamic_linking", "bevy_debug_stepping"]}
 mio = { version = "0.8.11", features = ["os-poll", "net"] }
 lib_spells = { version = "*", path = "../lib_spells" }
-strum_macros = "0.26.2"
 clap = { version = "4.5.4", features = ["derive"] }
 serde = "1.0.198"
 test-log = { version = "0.2.15", features = ["trace"] }
 tracing-test = "0.2.4"
+strum_macros = "0.26.2"

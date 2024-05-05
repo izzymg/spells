@@ -41,7 +41,7 @@ impl PerfUiEntry for WorldLatencyUi {
 struct PlayerLocationUi;
 
 impl PerfUiEntry for PlayerLocationUi {
-    type Value = Vec3;
+    type Value = String;
     type SystemParam = SQuery<Read<Transform>, With<replication::ControlledPlayer>>;
 
     fn label(&self) -> &str {
@@ -58,7 +58,7 @@ impl PerfUiEntry for PlayerLocationUi {
         transform: &mut <Self::SystemParam as SystemParam>::Item<'_, '_>,
     ) -> Option<Self::Value> {
         if let Ok(tr) = transform.get_single() {
-            Some(tr.translation)
+            Some(format!("{}, {}, {}", tr.translation.x, tr.translation.y, tr.translation.z))
         } else {
             None
         }

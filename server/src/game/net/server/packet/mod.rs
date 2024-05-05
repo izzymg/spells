@@ -1,8 +1,32 @@
 use crate::game::net::server::Token;
-use bevy::prelude::*;
 use std::fmt;
 use std::time::Instant;
 use strum_macros::FromRepr;
+
+#[derive(Debug)]
+pub enum InvalidPacketError {
+    InvalidPayload,
+    ParseError(lib_spells::net::ParseError),
+}
+
+impl fmt::Display for InvalidPacketError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InvalidPacketError::InvalidPayload => {
+                write!(f, "bad payload formatting")
+            }
+            InvalidPacketError::ParseError(err) => {
+                write!(f, "packet parse error: {}", err)
+            }
+        }
+    }
+}
+
+impl From<lib_spells::net::ParseError> for InvalidPacketError {
+    fn from(value: lib_spells::net::ParseError) -> Self {
+        Self::ParseError(value)
+    }
+}
 
 /// Higher level packet of input from a client
 #[derive(Debug, Copy, Clone)]
@@ -19,7 +43,7 @@ impl Packet {
     ) -> Result<Packet, InvalidPacketError> {
         let payload = &incoming.payload[..];
         let data = match incoming.command {
-            PacketCommand::Move => PacketData::Movement(MovementDirection::try_from(payload)?),
+            PacketCommand::Move => PacketData::Movement(lib_spells::net::MovementDirection::try_from(payload)?),
         };
         Ok(Packet {
             timestamp: incoming.timestamp,
@@ -31,72 +55,14 @@ impl Packet {
 
 #[derive(Debug, Copy, Clone)]
 pub enum PacketData {
-    Movement(MovementDirection),
+    Movement(lib_spells::net::MovementDirection),
     Noop,
-}
-
-/// Movement states including no movement, going clockwise from forward.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, FromRepr, Hash)]
-#[repr(u8)]
-pub enum MovementDirection {
-    Still = 0,
-    Forward,
-    Right,
-    Backward,
-    Left,
-}
-
-impl MovementDirection {
-    /// Convert a movement direction to a direction in -z forward y up 3D space.
-    pub fn to_3d(self) -> Vec3 {
-        match &self {
-            MovementDirection::Still => Vec3::ZERO,
-            MovementDirection::Forward => Vec3::NEG_Z,
-            MovementDirection::Right => Vec3::X,
-            MovementDirection::Backward => Vec3::Z,
-            MovementDirection::Left => Vec3::NEG_X,
-        }
-    }
-}
-
-impl TryFrom<&[u8]> for MovementDirection {
-    type Error = InvalidPacketError;
-    /// Produce a movement direction from a payload.
-    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 {
-            return Err(InvalidPacketError::BadMoveDirection);
-        }
-        if let Some(dir) = MovementDirection::from_repr(u8::from_le_bytes([payload[0]])) {
-            Ok(dir)
-        } else {
-            Err(InvalidPacketError::BadMoveDirection)
-        }
-    }
 }
 
 #[derive(FromRepr, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub(super) enum PacketCommand {
     Move,
-}
-
-#[derive(Debug)]
-pub enum InvalidPacketError {
-    InvalidPayload,
-    BadMoveDirection,
-}
-
-impl fmt::Display for InvalidPacketError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            InvalidPacketError::InvalidPayload => {
-                write!(f, "bad payload formatting")
-            }
-            InvalidPacketError::BadMoveDirection => {
-                write!(f, "bad movement direction")
-            }
-        }
-    }
 }
 
 // Remove and parse a `PacketCommand` from the start of `data`, returns the rest of the data

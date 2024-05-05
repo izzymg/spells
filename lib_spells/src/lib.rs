@@ -4,4 +4,3 @@ pub mod message_stream;
 pub mod alignment;
 pub mod net;
 pub mod shared;
-pub mod tcp_stream;

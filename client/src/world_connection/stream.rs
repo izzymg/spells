@@ -50,7 +50,7 @@ impl Display for ConnectionError {
 }
 
 impl From<lib_spells::net::SerializationError> for ConnectionError {
-    fn from(value: lib_spells::net::SerializationError) -> Self {
+    fn from(_value: lib_spells::net::SerializationError) -> Self {
         Self::BadData
     }
 }
@@ -95,12 +95,15 @@ impl Connection {
     pub fn read(&mut self) -> Result<Vec<lib_spells::net::WorldState>> {
         let messages = self.stream.try_read_messages()?;
 
-        messages.iter().filter(|m| message_is_ping(m)).for_each(|_| {
-            if let Some(last_ping) = self.last_ping {
-                self.last_ping_rtt = Some(Instant::now().duration_since(last_ping));
-                self.last_ping = None;
-            }
-        });
+        messages
+            .iter()
+            .filter(|m| message_is_ping(m))
+            .for_each(|_| {
+                if let Some(last_ping) = self.last_ping {
+                    self.last_ping_rtt = Some(Instant::now().duration_since(last_ping));
+                    self.last_ping = None;
+                }
+            });
 
         Ok(messages
             .iter()
@@ -129,7 +132,7 @@ impl Connection {
         if sent {
             self.stamp = self.stamp.checked_add(1).unwrap_or(0);
         }
-        println!("{}, {}, {}", sent, command, data);
+        println!("sent command: {}, {}, {}", sent, command, data);
         Ok(sent)
     }
 }
@@ -155,13 +158,8 @@ pub fn get_connection(
         }
         read_messages(&mut message_stream, &mut messages)?;
         if let Some(client_info) = validate_server_messages(&messages)? {
-            println!("stream: connection established");
-            return Ok((
-                Connection::new(message_stream),
-                client_info,
-            ));
+            return Ok((Connection::new(message_stream), client_info));
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
@@ -184,7 +182,7 @@ fn validate_server_messages(messages: &[Vec<u8>]) -> Result<Option<lib_spells::n
         Ok(ci) => ci,
         Err(_) => {
             dbg!(messages);
-            return Err(ConnectionError::BadData)
+            return Err(ConnectionError::BadData);
         }
     };
 
@@ -211,26 +209,36 @@ fn message_is_ping(message: &[u8]) -> bool {
     message.len() == 1 && message[0] == 0
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     #[ignore]
     fn test_client_stream() {
+        let init_time = Instant::now();
         let (mut conn, client_info) = get_connection("0.0.0.0:7776", Some("cat")).unwrap();
-        dbg!(client_info);
+        dbg!(
+            client_info,
+            Instant::now().duration_since(init_time).as_millis()
+        );
+        conn.send_command(0, 1).unwrap();
+        println!("!!!!!");
+        let sent_first_cmd_time = Instant::now();
         loop {
-            conn.ping().unwrap();
             let state = conn.read().unwrap();
-            if !state.is_empty() {
-                dbg!(state);
+            if state.is_empty() {
+                continue;
             }
+            dbg!(state);
+            println!(
+                "elapsed since command: {}ms",
+                Instant::now()
+                    .duration_since(sent_first_cmd_time)
+                    .as_millis()
+            );
             if let Some(latency) = conn.last_ping_rtt {
                 println!("{}ms", latency.as_millis());
             }
-            conn.send_command(0, 1).unwrap();
-            std::thread::sleep(Duration::from_millis(500));
         }
     }
 }

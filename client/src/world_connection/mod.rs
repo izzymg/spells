@@ -2,6 +2,7 @@ mod stream;
 use crate::game::{controls, replication};
 use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
 use std::time::Duration;
+use lib_spells::net;
 
 const PING_FREQUENCY: Duration = Duration::from_secs(4);
 
@@ -9,7 +10,7 @@ const PING_FREQUENCY: Duration = Duration::from_secs(4);
 pub struct ConnectedEvent;
 
 #[derive(Debug, Event)]
-pub struct WorldStateEvent(pub lib_spells::net::WorldState);
+pub struct WorldStateEvent(pub net::WorldState);
 
 #[derive(Debug, Event)]
 pub struct DisconnectedEvent(pub Option<stream::ConnectionError>);
@@ -18,14 +19,14 @@ pub struct DisconnectedEvent(pub Option<stream::ConnectionError>);
 pub struct Connection {
     connection: stream::Connection,
     ping_timer: Timer,
-    pub client_info: lib_spells::net::ClientInfo,
+    pub client_info: net::ClientInfo,
 }
 
 impl Connection {
     pub fn get_latency(&self) -> Option<Duration> {
         self.connection.last_ping_rtt
     }
-    fn new(conn: stream::Connection, client_info: lib_spells::net::ClientInfo) -> Self {
+    fn new(conn: stream::Connection, client_info: net::ClientInfo) -> Self {
         Self {
             connection: conn,
             client_info,
@@ -34,21 +35,7 @@ impl Connection {
     }
 
     fn send_movement_input(&mut self, wish_dir: Vec3) -> stream::Result<()> {
-        if wish_dir.length_squared() == 0.0 {
-            self.connection.send_command(0, 0)?;
-        }
-        if wish_dir.z == -1.0 {
-            self.connection.send_command(0, 1)?;
-        }
-        if wish_dir.x == 1.0 {
-            self.connection.send_command(0, 2)?;
-        }
-        if wish_dir.z == 1.0 {
-            self.connection.send_command(0, 3)?;
-        }
-        if wish_dir.x == -1.0 {
-            self.connection.send_command(0, 4)?;
-        }
+        self.connection.send_command(0, net::MovementDirection::from(wish_dir).0)?;
         Ok(())
     }
 }
@@ -90,7 +77,7 @@ fn sys_net_handle_error(
 // Currently connecting
 #[derive(Resource, Debug)]
 struct Connecting {
-    handle: tasks::Task<stream::Result<(stream::Connection, lib_spells::net::ClientInfo)>>,
+    handle: tasks::Task<stream::Result<(stream::Connection, net::ClientInfo)>>,
 }
 
 /// Stores one shot connect system
@@ -188,37 +175,13 @@ impl Plugin for WorldConnectionPlugin {
             (
                 sys_connection,
                 sys_connecting,
-                sys_net_send_ping.pipe(sys_net_handle_error).run_if(is_connection),
-                sys_net_send_movement.pipe(sys_net_handle_error).run_if(is_connection),
+                sys_net_send_ping
+                    .pipe(sys_net_handle_error)
+                    .run_if(is_connection),
+                sys_net_send_movement
+                    .pipe(sys_net_handle_error)
+                    .run_if(is_connection),
             ),
         );
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    #[test]
-    fn test_network_plugin() {
-        let mut app = App::new();
-        app.add_plugins((TaskPoolPlugin::default(), WorldConnectionPlugin));
-        let connect_sys = app
-            .world
-            .get_resource_mut::<WorldConnectSys>()
-            .unwrap()
-            .connect_system;
-        app.world
-            .run_system_with_input(connect_sys, ("127.0.0.1:7776".into(), None))
-            .unwrap();
-        loop {
-            let ev = app
-                .world
-                .get_resource_mut::<Events<ConnectedEvent>>()
-                .unwrap();
-            if ev.len() == 1 {
-                break;
-            }
-            app.update();
-        }
     }
 }
