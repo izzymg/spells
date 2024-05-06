@@ -22,27 +22,9 @@ impl MovementPacket {
     }
 }
 
-/// Calculate a new position based on an ordered sequence of movement packets
-pub fn find_position_from_packets(
-    init_pos: Vec3,
-    init_vel: Vec3,
-    init_t: Instant,
-    speed: f32,
-    packets: impl Iterator<Item = MovementPacket>,
-) -> (Vec3, Vec3, Instant) {
-    packets.fold((init_pos, init_vel, init_t), |(pos, vel, t), packet| {
-        let passed = packet.timestamp.saturating_duration_since(t);
-        let n_pos = find_position(pos, vel, passed);
-        (
-            n_pos,
-            (Vec3::from(packet.direction).normalize_or_zero() * speed),
-            packet.timestamp,
-        )
-    })
-}
-
 /// Calculate a new position based on a velocity that was `time_passed` ago
 pub fn find_position(position: Vec3, velocity: Vec3, time_passed: Duration) -> Vec3 {
+    bevy::log::debug!("movement calc: {}, {}, {}ms", position, velocity, time_passed.as_millis());
     position + (velocity * time_passed.as_secs_f32())
 }
 

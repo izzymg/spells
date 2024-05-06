@@ -76,7 +76,6 @@ impl From<std::io::Error> for ConnectionError {
 #[derive(Debug)]
 pub struct Connection {
     stream: message_stream::MessageStream<std::net::TcpStream>,
-    stamp: u8,
     last_ping: Option<Instant>,
     pub last_ping_rtt: Option<Duration>,
 }
@@ -85,17 +84,11 @@ impl Connection {
     pub fn new(stream: message_stream::MessageStream<std::net::TcpStream>) -> Self {
         Self {
             stream,
-            stamp: 0,
             last_ping: None,
             last_ping_rtt: None,
         }
     }
 
-    pub fn stamp(&self) -> u8 {
-        self.stamp
-    }
-
-    /// Handle incoming messages from the world
     pub fn read(&mut self) -> Result<Vec<(u8, lib_spells::net::WorldState)>> {
         let messages = self.stream.try_read_messages()?;
 
@@ -127,14 +120,8 @@ impl Connection {
     }
 
     /// Returns true if the input was actually sent
-    pub fn send_command(&mut self, command: u8, data: u8) -> Result<bool> {
-        let sent = self
-            .stream
-            .try_write_prefixed(&[command, self.stamp, data])?;
-        if sent {
-            self.stamp = self.stamp.checked_add(1).unwrap_or(0);
-        }
-        Ok(sent)
+    pub fn send_command(&mut self, command: u8, stamp: u8, data: u8) -> Result<bool> {
+        Ok(self.stream.try_write_prefixed(&[command, stamp, data])?)
     }
 }
 
@@ -233,7 +220,7 @@ mod tests {
             client_info,
             Instant::now().duration_since(init_time).as_millis()
         );
-        conn.send_command(0, 1).unwrap();
+        conn.send_command(0, 0, 1).unwrap();
         let sent_first_cmd_time = Instant::now();
         loop {
             let state = conn.read().unwrap();

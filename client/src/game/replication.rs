@@ -1,4 +1,4 @@
-use crate::{world_connection, GameStates};
+use crate::{game::controls, world_connection, GameStates};
 use bevy::{
     ecs::{
         entity::{EntityHashMap, MapEntities},
@@ -129,8 +129,8 @@ pub fn sys_on_first_world_state(
 ) {
     if let Some(state_ev) = state_events.drain().next() {
         log::info!("got initial world state");
-        replication.integrate(state_ev.0);
-        replication.mark_controlled_player(world_conn.client_info.you);
+        replication.integrate(state_ev.state);
+        replication.mark_controlled_player(world_conn.client_info().you);
         next_game_state.set(GameStates::Game);
     }
 }
@@ -139,9 +139,11 @@ pub fn sys_on_first_world_state(
 pub fn sys_on_world_state(
     mut state_events: ResMut<Events<world_connection::WorldStateEvent>>,
     mut replication: ReplicationSys,
+    mut cached: ResMut<InputCache>,
 ) {
     for state_ev in state_events.drain() {
-        replication.integrate(state_ev.0);
+        log::debug!("state - last read input: {}, current input: {}", state_ev.stamp, cached.0.len());
+        replication.integrate(state_ev.state);
     }
 }
 
@@ -150,4 +152,37 @@ pub fn sys_destroy_gos(mut commands: Commands, go_query: Query<Entity, With<supe
     for entity in go_query.iter() {
         commands.entity(entity).despawn_recursive();
     }
+}
+
+#[derive(Default, Resource)]
+pub struct InputCache(Vec<Vec3>);
+
+pub fn sys_enqueue_movements(
+    mut conn: ResMut<world_connection::Connection>,
+    wish_dir_query: Query<
+        &controls::WishDir,
+        With<ControlledPlayer>,
+    >,
+    mut cached: ResMut<InputCache>,
+) {
+    for wish_dir in wish_dir_query.iter() {
+        if cached.0.len() as u8 == u8::MAX {
+            cached.0.clear();
+        }
+        cached.0.push(wish_dir.0);
+        conn.enqueue_input(cached.0.len() as u8, wish_dir.0);
+    }
+}
+
+
+/// Read the set wish dir on the controlled player and predict a new translation
+pub fn sys_predict_player_pos(
+    mut controlled_query: Query<(&mut Transform, &controls::WishDir), With<ControlledPlayer>>,
+    time: Res<Time>,
+) {
+    let (mut controlled_trans, wish_dir) = match controlled_query.get_single_mut() {
+        Ok((c, w)) => (c, w),
+        Err(_) => return,
+    };
+    controlled_trans.translation += wish_dir.0.normalize_or_zero() * time.delta_seconds();
 }

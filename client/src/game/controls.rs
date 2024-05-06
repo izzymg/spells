@@ -21,11 +21,3 @@ pub fn sys_input_to_wish_dir(
     dir.set_if_neq(WishDir(input_axes.get_movement_3d()));
 }
 
-/// Read the set wish dir on the controlled player and predict a new translation
-pub fn sys_predict_player_pos(
-    mut controlled_query: Query<(&mut Transform, &WishDir), With<replication::ControlledPlayer>>,
-    time: Res<Time>,
-) {
-    let (mut controlled_trans, wish_dir) = controlled_query.single_mut();
-    controlled_trans.translation += wish_dir.0.normalize_or_zero() * time.delta_seconds();
-}

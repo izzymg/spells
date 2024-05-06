@@ -4,10 +4,14 @@ use crate::game;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool};
 use lib_spells::{net, shared};
 use server::packet;
-use std::{collections::HashMap, sync::mpsc, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::mpsc,
+    time::{Duration, Instant},
+};
 
 #[derive(Component, Debug)]
-struct LastNetProcess(pub Instant);
+struct PrevUpdateReal(pub Instant);
 
 #[derive(Resource, Debug, Default)]
 struct ActiveClientInfo(server::ActiveClientInfo);
@@ -20,7 +24,7 @@ fn spawn_client(commands: &mut Commands, id: &str) -> Entity {
             shared::Name(format!("Player {}", id)),
             shared::Position(Vec3::ZERO),
             shared::Velocity(Vec3::ZERO),
-            LastNetProcess(Instant::now()),
+            PrevUpdateReal(Instant::now()),
         ))
         .id()
 }
@@ -74,37 +78,45 @@ fn sys_process_incoming(
 
 fn sys_process_client_packets(
     In(packets): In<HashMap<Entity, Vec<packet::Packet>>>,
-    mut commands: Commands,
-    q_velocity_pos: Query<(
+    mut q_velocity_pos: Query<(
         Entity,
-        &shared::Position,
-        &shared::Velocity,
-        &LastNetProcess,
+        &mut shared::Position,
+        &mut shared::Velocity,
+        &mut PrevUpdateReal,
     )>,
+    time: Res<Time>,
 ) {
-    for (entity, pos, vel, t) in q_velocity_pos.iter() {
+    for (entity, mut pos, mut vel, mut prev_update) in q_velocity_pos.iter_mut() {
         let entity_packets = packets.get(&entity);
-        let (input_pos, input_vel, input_t) = movement::find_position_from_packets(
-            pos.0,
-            vel.0,
-            t.0,
-            1.0,
-            entity_packets.iter().flat_map(|p| {
-                p.iter()
-                    .filter_map(|p| movement::MovementPacket::from_packet(*p))
-            }),
-        );
-        // Time likely passed since the last received packet. Calculate a new position based on
-        // what we know, up to the current time.
-        let t = Instant::now();
-        let time_since_last_input = t.saturating_duration_since(input_t);
-        let calculated_pos = movement::find_position(input_pos, input_vel, time_since_last_input);
+        let movement_packets = entity_packets.iter().flat_map(|p| {
+            p.iter()
+                .filter_map(|p| movement::MovementPacket::from_packet(*p))
+        });
 
-        commands.entity(entity).try_insert((
-            shared::Position(calculated_pos),
-            shared::Velocity(input_vel),
-            LastNetProcess(t),
-        ));
+        // should have travelled. e.g., if they were moving at n (m/s) forward when t = 1,
+        // then they moved left at t = 3, p = n * (t3 - t2)
+
+        /*
+        // process all packets, setting new pos + vel by time between last packet
+        let mut last_packet_timestamp = prev_update.0;
+        for packet in movement_packets {
+            let t = packet.timestamp.duration_since(last_packet_timestamp);
+            log::debug!("since last: {}ms", t.as_millis());
+            pos.0 += vel.0 * t.as_secs_f32();
+            vel.0 = Vec3::from(packet.direction);
+            last_packet_timestamp = packet.timestamp;
+        }
+
+        if let Some(last_update) = time.last_update() {
+            // if there were no packets, we move them as far as the last update, otherwise since the
+            // last packet was received
+            let t = last_update.duration_since(last_packet_timestamp);
+            let new_pos = pos.0 + (vel.0 * t.as_secs_f32());
+            log::debug!("inferred: {} -> {} ({}ms)", pos.0, new_pos, t.as_millis());
+            pos.0 = new_pos;
+        }
+        prev_update.0 = time.last_update().unwrap_or(time.startup());
+        */
     }
 }
 

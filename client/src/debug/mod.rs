@@ -28,7 +28,7 @@ impl PerfUiEntry for WorldLatencyUi {
         conn: &mut <Self::SystemParam as SystemParam>::Item<'_, '_>,
     ) -> Option<Self::Value> {
         if let Some(conn) = conn {
-            if let Some(latency) = conn.get_latency() {
+            if let Some(latency) = conn.latency() {
                 return Some(latency.as_secs_f64() * 1000.0);
             }
         }
