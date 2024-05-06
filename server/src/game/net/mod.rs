@@ -7,11 +7,7 @@ use server::packet;
 use std::{
     collections::HashMap,
     sync::mpsc,
-    time::{Duration, Instant},
 };
-
-#[derive(Component, Debug)]
-struct PrevUpdateReal(pub Instant);
 
 #[derive(Resource, Debug, Default)]
 struct ActiveClientInfo(server::ActiveClientInfo);
@@ -24,7 +20,6 @@ fn spawn_client(commands: &mut Commands, id: &str) -> Entity {
             shared::Name(format!("Player {}", id)),
             shared::Position(Vec3::ZERO),
             shared::Velocity(Vec3::ZERO),
-            PrevUpdateReal(Instant::now()),
         ))
         .id()
 }
@@ -82,11 +77,10 @@ fn sys_process_client_packets(
         Entity,
         &mut shared::Position,
         &mut shared::Velocity,
-        &mut PrevUpdateReal,
     )>,
     time: Res<Time>,
 ) {
-    for (entity, mut pos, mut vel, mut prev_update) in q_velocity_pos.iter_mut() {
+    for (entity, mut pos, mut vel) in q_velocity_pos.iter_mut() {
         let entity_packets = packets.get(&entity);
         let movement_packets = entity_packets.iter().flat_map(|p| {
             p.iter()
