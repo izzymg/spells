@@ -82,6 +82,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                     scene: dev_scenes::Scene::FollowCamera,
                 });
             }
+            "replication" => {
+                app.add_plugins(dev_scenes::DevScenesPlugin {
+                    scene: dev_scenes::Scene::Replication,
+                });
+            }
             _ => {
                 panic!("unrecognised: {}", mode)
             }

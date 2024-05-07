@@ -32,7 +32,7 @@ impl Default for FollowCamera {
     fn default() -> Self {
         Self {
             look_sensitivity: 0.5,
-            invert_pitch: true,
+            invert_pitch: false,
             invert_yaw: false,
             yaw: 0.0,
             pitch: 0.0,
@@ -91,6 +91,6 @@ fn sys_follow_camera_look(
             * Quat::from_axis_angle(Vec3::X, cam.pitch.to_radians()),
     );
 
-    cam_trans.translation = follow_trans.translation + rot.forward() * cam.z_offset;
+    cam_trans.translation = follow_trans.translation + (rot.back() * cam.z_offset);
     cam_trans.look_at(follow_trans.translation, Vec3::Y);
 }

@@ -48,7 +48,7 @@ struct PlayerLocationUi;
 
 impl PerfUiEntry for PlayerLocationUi {
     type Value = Vec3;
-    type SystemParam = SQuery<Read<Transform>, With<replication::ControlledPlayer>>;
+    type SystemParam = SQuery<Read<Transform>, With<replication::PredictedPlayer>>;
 
     fn label(&self) -> &str {
         "Position"

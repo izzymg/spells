@@ -1,7 +1,17 @@
-use crate::game::net::{packet, server};
-use lib_spells::message_stream;
+use crate::game::net::server;
+use lib_spells::{message_stream, net::packet};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
+
+/// Incoming request from a client
+#[derive(Debug, Copy, Clone)]
+pub struct ClientPacket {
+    /// Identifies this `Packet` as belonging to a specific client.
+    pub token: server::Token,
+    /// Millisecond client-provided timestamp. Should be validated for legitimacy.
+    pub timestamp: u32,
+    pub data: packet::PacketData,
+}
 
 #[derive(Debug)]
 pub enum ClientError {
@@ -140,7 +150,7 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
             .collect()
     }
 
-    pub fn try_receive(&mut self, token: server::Token) -> Result<Vec<packet::Packet>> {
+    pub fn try_receive(&mut self, token: server::Token) -> Result<Vec<ClientPacket>> {
         let mut packets = vec![];
         let client = self.map.get_mut(&token).unwrap();
         for message in client.stream.try_read_messages()? {
@@ -157,6 +167,7 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
         Ok(packets)
     }
 }
+
 fn message_is_ping(message: &[u8]) -> bool {
     message.len() == 1 && message[0] == 0
 }

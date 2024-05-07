@@ -1,95 +1,13 @@
+pub mod packet;
 use crate::shared;
 use bevy_ecs::{entity::MapEntities, prelude::*, system::Command};
 use bevy_math::*;
 use bincode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::Display;
+use std::fmt::{self, Display};
+use strum_macros::FromRepr;
 pub type SerializationError = bincode::ErrorKind;
-
-#[derive(Debug)]
-pub struct ParseError;
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "parse error")
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct MovementDirection(pub u8);
-pub const MOVE_NONE: u8 = 0b00000000;
-pub const MOVE_LEFT: u8 = 0b00000001;
-pub const MOVE_RIGHT: u8 = 0b00000010;
-pub const MOVE_UP: u8 = 0b00000100;
-pub const MOVE_DOWN: u8 = 0b00001000;
-pub const MOVE_FORWARD: u8 = 0b00010000;
-pub const MOVE_BACKWARD: u8 = 0b00100000;
-
-impl From<MovementDirection> for Vec3 {
-    fn from(value: MovementDirection) -> Vec3 {
-        let mut vec = Vec3::ZERO;
-        let dir = value.0;
-        if dir & MOVE_LEFT > 0 {
-            vec.x += -1.;
-        }
-        if dir & MOVE_RIGHT > 0 {
-            vec.x += 1.;
-        }
-        if dir & MOVE_UP > 0 {
-            vec.y += 1.;
-        }
-        if dir & MOVE_DOWN > 0 {
-            vec.y += -1.;
-        }
-        if dir & MOVE_FORWARD > 0 {
-            vec.z += -1.;
-        }
-        if dir & MOVE_BACKWARD > 0 {
-            vec.z += 1.
-        }
-        vec
-    }
-}
-
-impl From<Vec3> for MovementDirection {
-    fn from(vec: Vec3) -> Self {
-        if vec == Vec3::ZERO {
-            return MovementDirection(MOVE_NONE);
-        }
-        let mut movement = 0_u8;
-        if vec.x < 0.0 {
-            movement |= MOVE_LEFT;
-        } else if vec.x > 0.0 {
-            movement |= MOVE_RIGHT;
-        }
-
-        if vec.y < 0.0 {
-            movement |= MOVE_DOWN;
-        } else if vec.y > 0.0 {
-            movement |= MOVE_UP;
-        }
-
-        if vec.z < 0.0 {
-            movement |= MOVE_FORWARD;
-        } else if vec.z > 0.0 {
-            movement |= MOVE_BACKWARD;
-        }
-
-        Self(movement)
-    }
-}
-
-impl TryFrom<&[u8]> for MovementDirection {
-    type Error = ParseError;
-    /// Produce a movement direction from a payload.
-    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 {
-            return Err(ParseError);
-        }
-        Ok(MovementDirection(u8::from_le_bytes([payload[0]])))
-    }
-}
 
 // we making it into the mental asylum with this one
 // this just generates our serializable entity state struct so we don't have 1000 fields and update/from implementations

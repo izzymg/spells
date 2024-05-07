@@ -1,7 +1,7 @@
 mod stream;
 use crate::SystemSets;
 use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
-use lib_spells::net;
+use lib_spells::net::{self, packet};
 use std::time::Duration;
 
 const PING_FREQ: Duration = Duration::from_secs(4);
@@ -71,7 +71,7 @@ fn sys_net_send_movement(mut conn: ResMut<Connection>) -> stream::Result<()> {
         .into_iter()
         .try_for_each(|(stamp, dir)| {
             conn.connection
-                .send_command(0, stamp, net::MovementDirection::from(dir).0)?;
+                .send_command(0, stamp, packet::MovementDirection::from(dir).0)?;
             Ok(())
         })
 }
