@@ -249,7 +249,7 @@ fn sys_predict_player_pos(
         Ok((c, w)) => (c, w),
         Err(_) => return,
     };
-    predicted_trans.translation += wish_dir.0.normalize_or_zero() * time.delta_seconds();
+    predicted_trans.translation += wish_dir.0 * time.delta_seconds();
 }
 
 #[derive(Debug, Clone)]
@@ -287,7 +287,7 @@ fn sys_debug_replication(
         predicted_pos += input.wish_dir * (cmp - input.time).as_secs_f32();
     }
     if let Ok(real_pos) = predicted_query.get_single() {
-        log::debug!("predicted: {}, actual: {}", predicted_pos, real_pos.translation);
+        log::debug!("predicted: {}, actual: {} (err: {})", predicted_pos, real_pos.translation, (predicted_pos - real_pos.translation).abs());
     }
 }
 

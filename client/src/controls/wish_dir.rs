@@ -8,7 +8,7 @@ pub fn sys_update_wish_dir(
     input_axes: Res<input::ActionAxes>,
     mut wish_dir: ResMut<WishDir>,
 ) {
-    wish_dir.set_if_neq(WishDir(input_axes.get_movement_3d()));
+    wish_dir.set_if_neq(WishDir(input_axes.get_movement_3d().normalize_or_zero()));
 }
 
 pub struct WishDirPlugin;
