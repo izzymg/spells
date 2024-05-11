@@ -1,4 +1,4 @@
-use crate::{cameras::free_cam, input, terrain, GameStates};
+use crate::{controls::cameras::free_cam, input, render::terrain, events};
 use bevy::prelude::*;
 
 #[derive(Resource, Default)]
@@ -35,7 +35,7 @@ fn sys_draw_preview_gizmos(
 fn sys_add_terrain(
     place_preview: ResMut<PlacePreview>,
     mut editor_terrain: ResMut<EditorTerrain>,
-    mut terrain_event_send: EventWriter<terrain::GenerateTerrainEvent>,
+    mut terrain_event_send: EventWriter<events::GenerateTerrainEvent>,
     mut button_state: ResMut<input::ActionButtons>,
 ) {
     if button_state.get_button_state(input::Action::Primary) == input::ButtonState::Pressed {
@@ -44,7 +44,7 @@ fn sys_add_terrain(
         } else {
             editor_terrain.0.add(place_preview.0);
         }
-        terrain_event_send.send(terrain::GenerateTerrainEvent {
+        terrain_event_send.send(events::GenerateTerrainEvent {
             terrain: editor_terrain.0.clone(), //ew
         });
     }
@@ -53,10 +53,6 @@ fn sys_add_terrain(
 pub struct EditorPlugin;
 impl Plugin for EditorPlugin {
     fn build(&self, app: &mut App) {
-
-        // push straight into Game to avoid the menu spawning
-        app.insert_state(GameStates::Game);
-
         app.add_plugins(free_cam::FreeCameraPlugin);
         app.insert_resource(EditorTerrain::default());
         app.insert_resource(PlacePreview::default());

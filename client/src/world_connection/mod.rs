@@ -1,22 +1,10 @@
 mod stream;
-use crate::SystemSets;
+use crate::{events, SystemSets};
 use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
 use lib_spells::net::{self, packet};
 use std::time::Duration;
 
 const PING_FREQ: Duration = Duration::from_secs(4);
-
-#[derive(Debug, Event)]
-pub struct ConnectedEvent;
-
-#[derive(Debug, Event)]
-pub struct WorldStateEvent {
-    pub stamp: u8,
-    pub state: net::WorldState,
-}
-
-#[derive(Debug, Event)]
-pub struct DisconnectedEvent(pub Option<stream::ConnectionError>);
 
 #[derive(Resource, Debug)]
 pub struct Connection {
@@ -78,11 +66,11 @@ fn sys_net_send_movement(mut conn: ResMut<Connection>) -> stream::Result<()> {
 
 fn sys_net_handle_error(
     In(err): In<stream::Result<()>>,
-    mut dc_ev_w: EventWriter<DisconnectedEvent>,
+    mut dc_ev_w: EventWriter<events::DisconnectedEvent>,
 ) {
     if let Err(err) = err {
         log::warn!("caught network send error: {}", err);
-        dc_ev_w.send(DisconnectedEvent(Some(err)));
+        dc_ev_w.send(events::DisconnectedEvent(Some(err.to_string())));
     }
 }
 
@@ -105,30 +93,34 @@ impl WorldConnectSys {
 }
 
 /// Check for disconnection and dispatch incoming data.
-fn sys_connection(world: &mut World) {
+fn sys_check_connection(world: &mut World) {
     world.resource_scope(|world, mut connection: Mut<Connection>| {
         match connection.connection.read() {
             Ok(reads) => {
                 for (stamp, state) in reads {
                     world
-                        .get_resource_mut::<Events<WorldStateEvent>>()
+                        .get_resource_mut::<Events<events::WorldStateEvent>>()
                         .unwrap()
-                        .send(WorldStateEvent { stamp, state });
+                        .send(events::WorldStateEvent {
+                            stamp: Some(stamp),
+                            client_info: connection.client_info,
+                            state,
+                        });
                 }
             }
             Err(err) => {
                 log::debug!("removed connection resource: {:?}", err);
                 world
-                    .get_resource_mut::<Events<DisconnectedEvent>>()
+                    .get_resource_mut::<Events<events::DisconnectedEvent>>()
                     .unwrap()
-                    .send(DisconnectedEvent(Some(err)));
+                    .send(events::DisconnectedEvent(Some(err.to_string())));
                 world.remove_resource::<Connection>();
             }
         }
     });
 }
 
-fn sys_connecting(world: &mut World) {
+fn sys_check_connecting(world: &mut World) {
     let mut connecting = match world.get_resource_mut::<Connecting>() {
         Some(connecting) => connecting,
         None => return,
@@ -144,17 +136,17 @@ fn sys_connecting(world: &mut World) {
         Ok((conn, client_info)) => {
             log::debug!("inserted connection resource");
             world
-                .get_resource_mut::<Events<ConnectedEvent>>()
+                .get_resource_mut::<Events<events::ConnectedEvent>>()
                 .unwrap()
-                .send(ConnectedEvent);
+                .send(events::ConnectedEvent);
             world.insert_resource(Connection::new(conn, client_info));
         }
         Err(err) => {
             log::info!("connection failure: {}", err);
             world
-                .get_resource_mut::<Events<DisconnectedEvent>>()
+                .get_resource_mut::<Events<events::DisconnectedEvent>>()
                 .unwrap()
-                .send(DisconnectedEvent(Some(err)));
+                .send(events::DisconnectedEvent(Some(err.to_string())));
         }
     }
 }
@@ -167,6 +159,10 @@ fn sys_connect(In((addr, password)): In<(String, Option<String>)>, world: &mut W
     world.insert_resource(Connecting { handle });
 }
 
+fn is_connecting(conn: Option<Res<Connecting>>) -> bool {
+    conn.is_some()
+}
+
 fn is_connection(conn: Option<Res<Connection>>) -> bool {
     conn.is_some()
 }
@@ -176,26 +172,20 @@ pub struct WorldConnectionPlugin;
 impl Plugin for WorldConnectionPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         let connect_system = app.world.register_system(sys_connect);
-        app.add_event::<ConnectedEvent>();
-        app.add_event::<DisconnectedEvent>();
-        app.add_event::<WorldStateEvent>();
         app.insert_resource(WorldConnectSys::new(connect_system));
         app.add_systems(
             Update,
             (
-                sys_connection
-                    .run_if(is_connection)
-                    .in_set(SystemSets::NetFetch),
-                sys_connecting,
+                sys_check_connecting.run_if(is_connecting),
                 (
-                    sys_net_send_ping
-                        .pipe(sys_net_handle_error)
-                        .run_if(is_connection),
-                    sys_net_send_movement
-                        .pipe(sys_net_handle_error)
-                        .run_if(is_connection),
+                    sys_check_connection.in_set(SystemSets::NetFetch),
+                    (
+                        sys_net_send_ping.pipe(sys_net_handle_error),
+                        sys_net_send_movement.pipe(sys_net_handle_error),
+                    )
+                        .in_set(SystemSets::NetSend),
                 )
-                    .in_set(SystemSets::NetSend),
+                    .run_if(is_connection),
             ),
         );
     }

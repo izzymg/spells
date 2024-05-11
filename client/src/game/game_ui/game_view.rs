@@ -1,7 +1,5 @@
+use crate::ui::widgets;
 use bevy::{log, prelude::*};
-
-use super::widgets;
-
 use lib_spells::shared;
 
 /// Tag

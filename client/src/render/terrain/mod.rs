@@ -1,3 +1,4 @@
+use crate::events;
 use bevy::{
     ecs::system::SystemParam,
     log,
@@ -10,7 +11,7 @@ use std::fmt;
 // Size in world space of voxels
 pub const VOXEL_SIZE: i32 = 1;
 
-#[derive(Serialize, Deserialize, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct Voxel(pub i32, pub i32, pub i32);
 
 impl From<(i32, i32, i32)> for Voxel {
@@ -37,7 +38,7 @@ impl fmt::Display for Voxel {
     }
 }
 
-#[derive(Resource, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Resource, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct VoxelTerrain(pub Vec<Voxel>);
 
 pub enum Direction {
@@ -164,12 +165,6 @@ fn sys_populate_assets_ev(
     });
 }
 
-/// Instruct a generation of the given terrain data
-#[derive(Event)]
-pub struct GenerateTerrainEvent {
-    pub terrain: VoxelTerrain,
-}
-
 #[derive(SystemParam)]
 struct TerrainGenerationSysParams<'w, 's> {
     commands: Commands<'w, 's>,
@@ -205,7 +200,7 @@ impl<'w, 's> TerrainGenerationSysParams<'w, 's> {
 
 fn sys_generate_terrain(
     mut sys_params: TerrainGenerationSysParams,
-    mut voxel_terrain_ev: EventReader<GenerateTerrainEvent>,
+    mut voxel_terrain_ev: EventReader<events::GenerateTerrainEvent>,
 ) {
     for ev in voxel_terrain_ev.read() {
         log::info!("regenerating terrain");
@@ -264,7 +259,6 @@ pub struct TerrainPlugin;
 impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.insert_resource(TerrainAssets::default());
-        app.add_event::<GenerateTerrainEvent>();
         app.add_systems(Startup, sys_populate_assets_ev);
         app.add_systems(Update, sys_generate_terrain);
     }

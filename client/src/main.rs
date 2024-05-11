@@ -1,10 +1,12 @@
-pub mod cameras;
+pub mod events;
+pub mod render;
+pub mod controls;
+pub mod replication;
 pub mod debug;
 pub mod dev_scenes;
 pub mod editor;
 pub mod game;
 pub mod input;
-pub mod terrain;
 pub mod ui;
 pub mod window;
 pub mod world_connection;
@@ -12,13 +14,6 @@ pub mod world_connection;
 use bevy::{log::LogPlugin, prelude::*};
 use std::{env, error::Error};
 
-#[derive(States, Debug, Clone, PartialEq, Eq, Default, Hash)]
-pub enum GameStates {
-    #[default]
-    MainMenu,
-    LoadGame,
-    Game,
-}
 
 #[derive(SystemSet, Clone, Copy, Hash, Eq, PartialEq, Debug)]
 enum SystemSets {
@@ -26,17 +21,18 @@ enum SystemSets {
     NetSend,
     Controls,
     Input,
+    Replication,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let mut app = App::new();
-    app.init_state::<GameStates>();
 
     app.configure_sets(
         Update,
         (
             SystemSets::NetFetch,
+            SystemSets::Replication,
             SystemSets::Input,
             SystemSets::Controls,
             SystemSets::NetSend,
@@ -67,9 +63,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     app.add_plugins((
         input::InputPlugin,
-        terrain::TerrainPlugin,
         window::WindowPlugin,
-        ui::UiPlugin,
+        events::EventsPlugin,
     ));
 
     if let Some(mode) = args.get(1) {
@@ -92,7 +87,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     } else {
-        app.add_plugins((world_connection::WorldConnectionPlugin, game::GamePlugin));
+        app.add_plugins(game::GamePlugin);
     }
     app.run();
     Ok(())

@@ -1,4 +1,4 @@
-use crate::{cameras::follow_cam, game::replication, world_connection, GameStates};
+use crate::{controls::cameras::follow_cam, replication, world_connection};
 use bevy::{input::ButtonInput, prelude::*};
 
 const CAPSULE_HEIGHT: f32 = 1.65;
@@ -62,20 +62,20 @@ fn sys_set_wish_dir(
     mut wish_dir_q: Query<&mut replication::WishDir>,
     input: Res<ButtonInput<KeyCode>>,
 ) {
-    let mut dir = wish_dir_q.single_mut();
-    dir.0 = Vec3::ZERO;
+    let mut dir = Vec3::ZERO;
     if input.pressed(KeyCode::KeyW) {
-        dir.0.z = -1.;
+        dir.z = -1.;
     }
     if input.pressed(KeyCode::KeyS) {
-        dir.0.z = 1.;
+        dir.z = 1.;
     }
     if input.pressed(KeyCode::KeyA) {
-        dir.0.x = -1.;
+        dir.x = -1.;
     }
     if input.pressed(KeyCode::KeyD) {
-        dir.0.x = 1.;
+        dir.x = 1.;
     }
+    wish_dir_q.single_mut().set_if_neq(replication::WishDir(dir));
 }
 
 pub struct ReplicationDevScenePlugin;
@@ -83,7 +83,6 @@ pub struct ReplicationDevScenePlugin;
 impl Plugin for ReplicationDevScenePlugin {
     fn build(&self, app: &mut App) {
         // bypass main menu
-        app.insert_state(GameStates::Game);
         app.add_plugins((
             world_connection::WorldConnectionPlugin,
             replication::ReplicationPlugin,

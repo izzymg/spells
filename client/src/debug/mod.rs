@@ -1,4 +1,4 @@
-use crate::{game::replication, world_connection};
+use crate::{replication, world_connection};
 use bevy::ecs::system::lifetimeless::{Read, SQuery, SRes};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;

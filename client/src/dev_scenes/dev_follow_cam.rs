@@ -1,5 +1,5 @@
 /*! Dev scene: testing "follow camera" */
-use crate::{cameras::follow_cam, GameStates};
+use crate::controls::cameras::follow_cam;
 use bevy::prelude::*;
 const CAPSULE_HEIGHT: f32 = 1.75;
 const MOVE_SPEED: f32 = 3.;
@@ -67,7 +67,6 @@ pub struct FollowCamDevScenePlugin;
 
 impl Plugin for FollowCamDevScenePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(GameStates::Game);
         app.add_plugins(follow_cam::FollowCameraPlugin);
         app.add_systems(Startup, sys_create_scene);
         app.add_systems(Update, sys_move_followed);
