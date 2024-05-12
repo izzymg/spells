@@ -7,7 +7,6 @@ use std::fmt::Display;
 pub enum ClientError {
     StreamError(message_stream::MessageStreamError),
     PacketError(packet::InvalidPacketError),
-    MessageError,
 }
 
 impl Display for ClientError {
@@ -18,9 +17,6 @@ impl Display for ClientError {
             }
             Self::PacketError(err) => {
                 write!(f, "packet error: {}", err)
-            }
-            Self::MessageError => {
-                write!(f, "message error")
             }
         }
     }
@@ -42,7 +38,7 @@ pub type Result<T> = std::result::Result<T, ClientError>;
 
 struct ConnectedClient<T: std::io::Read + std::io::Write> {
     stream: message_stream::MessageStream<T>,
-    stamp: Option<u8>,
+    seq: Option<u8>,
 }
 
 pub struct ConnectedClients<T: std::io::Read + std::io::Write> {
@@ -102,7 +98,7 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
             token,
             ConnectedClient {
                 stream,
-                stamp: None,
+                seq: None,
             },
         );
         self.needs_info.insert(token);
@@ -135,7 +131,7 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
             .iter()
             .filter_map(|token| {
                 if let Some(client) = self.map.get_mut(token) {
-                    let data = [&[client.stamp.unwrap_or(0)], &serialized_state[..]].concat();
+                    let data = [&[client.seq.unwrap_or(0)], &serialized_state[..]].concat();
                     let res = client.stream.try_write_prefixed(&data);
                     return res.is_err().then(|| (*token, res.unwrap_err()));
                 }
@@ -155,7 +151,7 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
                 continue;
             }
             let packet = packet::Packet::deserialize(&message)?;
-            client.stamp = Some(packet.seq);
+            client.seq = Some(packet.seq);
             packets.push(packet);
         }
 

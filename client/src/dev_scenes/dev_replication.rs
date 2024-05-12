@@ -1,5 +1,5 @@
-use crate::{controls::cameras::follow_cam, replication, world_connection};
-use bevy::{input::ButtonInput, prelude::*};
+use crate::{controls::{wish_dir, cameras::follow_cam}, input, replication, world_connection};
+use bevy::prelude::*;
 
 const CAPSULE_HEIGHT: f32 = 1.65;
 
@@ -27,7 +27,6 @@ fn sys_build_replication_dev_scenes(
         },
         follow_cam::FollowCameraTarget,
         replication::PredictedPlayer,
-        replication::WishDir::default(),
     ));
 
     // origin cube
@@ -57,38 +56,16 @@ fn sys_build_replication_dev_scenes(
     });
 }
 
-/// Map keys to wish dir on predicted player
-fn sys_set_wish_dir(
-    mut wish_dir_q: Query<&mut replication::WishDir>,
-    input: Res<ButtonInput<KeyCode>>,
-) {
-    let mut dir = Vec3::ZERO;
-    if input.pressed(KeyCode::KeyW) {
-        dir.z = -1.;
-    }
-    if input.pressed(KeyCode::KeyS) {
-        dir.z = 1.;
-    }
-    if input.pressed(KeyCode::KeyA) {
-        dir.x = -1.;
-    }
-    if input.pressed(KeyCode::KeyD) {
-        dir.x = 1.;
-    }
-    wish_dir_q.single_mut().set_if_neq(replication::WishDir(dir));
-}
-
 pub struct ReplicationDevScenePlugin;
 
 impl Plugin for ReplicationDevScenePlugin {
     fn build(&self, app: &mut App) {
-        // bypass main menu
         app.add_plugins((
             world_connection::WorldConnectionPlugin,
             replication::ReplicationPlugin,
             follow_cam::FollowCameraPlugin,
+            wish_dir::WishDirPlugin,
         ));
         app.add_systems(Startup, sys_build_replication_dev_scenes);
-        app.add_systems(Update, sys_set_wish_dir);
     }
 }

@@ -24,12 +24,12 @@ fn sys_destroy_loading_ui(mut commands: Commands, ui_query: Query<Entity, With<L
         commands.entity(entity).despawn_recursive();
     }
 }
-pub struct LoadingUIPlugin;
+pub struct LoadingPlugin;
 
-impl Plugin for LoadingUIPlugin {
+impl Plugin for LoadingPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameStates::Loading), sys_create_loading_ui);
-        app.add_systems(Update, sys_on_replication_complete.run_if(on_event::<events::ReplicationCompleted>()));
+        app.add_systems(Update, sys_on_replication_complete.run_if(on_event::<events::ReplicationCompleted>()).run_if(in_state(GameStates::Loading)));
         app.add_systems(OnExit(GameStates::Loading), sys_destroy_loading_ui);
     }
 }

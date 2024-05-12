@@ -97,7 +97,6 @@ impl Connection {
             .filter(|m| message_is_ping(m))
             .for_each(|_| {
                 if let Some(last_ping) = self.last_ping {
-                    bevy::log::debug!("pong");
                     self.last_ping_rtt = Some(Instant::now().duration_since(last_ping));
                     self.last_ping = None;
                 }
@@ -120,20 +119,20 @@ impl Connection {
     }
 
     /// Returns true if the input was actually sent
-    pub fn send_command(&mut self, command: u8, stamp: u8, data: u8) -> Result<bool> {
-        Ok(self.stream.try_write_prefixed(&[command, stamp, data])?)
+    pub fn send_packet(&mut self, packet: lib_spells::net::packet::Packet) -> Result<bool> {
+        Ok(self.stream.try_write_prefixed(&packet.serialize())?)
     }
 }
 
-/// Get the first stamp byte, parse the rest as world state
+/// Get the first sequence byte, parse the rest as world state
 fn deserialize_world_state_message(data: &[u8]) -> Result<(u8, lib_spells::net::WorldState)> {
     if data.is_empty() {
         return Err(ConnectionError::BadData);
     }
 
-    let stamp = u8::from_le_bytes(data[0..1].try_into().unwrap());
+    let seq = u8::from_le_bytes(data[0..1].try_into().unwrap());
     let state: lib_spells::net::WorldState = lib_spells::net::deserialize(&data[1..])?;
-    Ok((stamp, state))
+    Ok((seq, state))
 }
 
 pub fn get_connection(
@@ -208,35 +207,3 @@ fn message_is_ping(message: &[u8]) -> bool {
     message.len() == 1 && message[0] == 0
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    #[ignore]
-    fn test_client_stream() {
-        let init_time = Instant::now();
-        let (mut conn, client_info) = get_connection("0.0.0.0:7776", Some("cat")).unwrap();
-        dbg!(
-            client_info,
-            Instant::now().duration_since(init_time).as_millis()
-        );
-        conn.send_command(0, 0, 1).unwrap();
-        let sent_first_cmd_time = Instant::now();
-        loop {
-            let state = conn.read().unwrap();
-            if state.is_empty() {
-                continue;
-            }
-            dbg!(state);
-            println!(
-                "elapsed since command: {}ms",
-                Instant::now()
-                    .duration_since(sent_first_cmd_time)
-                    .as_millis()
-            );
-            if let Some(latency) = conn.last_ping_rtt {
-                println!("{}ms", latency.as_millis());
-            }
-        }
-    }
-}

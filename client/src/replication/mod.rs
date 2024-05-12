@@ -1,6 +1,6 @@
 /*! Replicates world state into the game world */
 
-use crate::{events, world_connection, SystemSets};
+use crate::{controls::wish_dir, events, world_connection, SystemSets};
 use bevy::{
     ecs::{
         entity::{EntityHashMap, MapEntities},
@@ -21,10 +21,6 @@ pub struct Replicated;
 /// Marks the player that is being predicted by this client
 #[derive(Component, Debug, Default)]
 pub struct PredictedPlayer;
-
-/// Which direction we would like our `PredictedPlayer` to go.
-#[derive(Debug, Component, PartialEq, Default)]
-pub struct WishDir(pub Vec3);
 
 /// Maps World entities to Game entities
 #[derive(Debug, Default)]
@@ -115,16 +111,14 @@ impl<'w, 's> ReplicationSys<'w, 's> {
             self.update_world_entity(world_entity, state);
         }
         log::debug!("world state integration done");
-        self.replication_completed_ev.send(events::ReplicationCompleted);
+        self.replication_completed_ev
+            .send(events::ReplicationCompleted);
     }
 
     /// Marks the given world entity as being predicted by this client.
     fn mark_predicted_player(&mut self, world_entity: Entity) {
         let game_entity = self.world_to_game.0 .0.get(&world_entity).unwrap();
-        self.commands
-            .entity(*game_entity)
-            .insert((WishDir::default(), PredictedPlayer));
-        log::debug!("predicted player: {:?} -> {:?}", world_entity, game_entity);
+        self.commands.entity(*game_entity).insert(PredictedPlayer);
     }
 }
 
@@ -155,7 +149,7 @@ struct InputCache(VecDeque<CachedInput>);
 
 impl InputCache {
     fn get_next_sequence(&self) -> u8 {
-        if let Some(ele) = self.0.front() {
+        if let Some(ele) = self.0.back() {
             if ele.seq == u8::MAX {
                 0
             } else {
@@ -215,38 +209,33 @@ fn sys_on_world_state(
     cached: ResMut<InputCache>,
 ) {
     for state_ev in state_events.drain() {
-        log::debug!(
-            "state - last read input: {}, current input: {}",
-            state_ev.stamp.unwrap_or(0),
-            cached.0.len()
-        );
         replication.integrate(state_ev.state);
         replication.mark_predicted_player(state_ev.client_info.you);
     }
 }
 
+/// Cache & enqueue new wish direction inputs
 fn sys_enqueue_movements(
     mut conn: Option<ResMut<world_connection::Connection>>,
-    wish_dir_query: Query<&WishDir, (Changed<WishDir>, With<PredictedPlayer>)>,
+    wish_dir: Res<wish_dir::WishDir>,
     mut cache: ResMut<InputCache>,
     time: Res<Time>,
 ) {
-    for wish_dir in wish_dir_query.iter() {
-        let current_time = time.elapsed();
-        let seq = cache.push(wish_dir.0, current_time);
-        if let Some(ref mut conn) = conn {
-            conn.enqueue_input(seq, wish_dir.0);
-        }
+    let current_time = time.elapsed();
+    let seq = cache.push(wish_dir.0, current_time);
+    if let Some(ref mut conn) = conn {
+        conn.enqueue_input(current_time, seq, wish_dir.0);
     }
 }
 
 /// Read the set wish dir on the predicted player and predict a new translation
 fn sys_predict_player_pos(
-    mut predicted_query: Query<(&mut Transform, &WishDir), With<PredictedPlayer>>,
+    mut predicted_query: Query<&mut Transform, With<PredictedPlayer>>,
+    wish_dir: Res<wish_dir::WishDir>,
     time: Res<Time>,
 ) {
-    let (mut predicted_trans, wish_dir) = match predicted_query.get_single_mut() {
-        Ok((c, w)) => (c, w),
+    let mut predicted_trans = match predicted_query.get_single_mut() {
+        Ok(t) => t,
         Err(_) => return,
     };
     predicted_trans.translation += wish_dir.0 * time.delta_seconds();
@@ -275,7 +264,6 @@ fn sys_debug_replication(
     if !debug_data.check_timer.just_finished() {
         return;
     }
-    log::debug!("check timer");
     let mut predicted_pos = Vec3::ZERO;
     for (i, input) in input_cache.iter().enumerate() {
         let cmp = if let Some(next_input) = input_cache.get(i + 1) {
@@ -287,7 +275,19 @@ fn sys_debug_replication(
         predicted_pos += input.wish_dir * (cmp - input.time).as_secs_f32();
     }
     if let Ok(real_pos) = predicted_query.get_single() {
-        log::debug!("predicted: {}, actual: {} (err: {})", predicted_pos, real_pos.translation, (predicted_pos - real_pos.translation).abs());
+        log::debug!(
+            "DEBUGGING: predicted: {}, actual: {} (err: {})",
+            predicted_pos,
+            real_pos.translation,
+            (predicted_pos - real_pos.translation).abs()
+        );
+    }
+}
+
+fn sys_cleanup(mut commands: Commands, replication_query: Query<Entity, With<Replicated>>) {
+    log::debug!("cleaning up replicated objects");
+    for entity in replication_query.iter() {
+        commands.entity(entity).despawn_recursive();
     }
 }
 
@@ -299,23 +299,29 @@ impl Plugin for ReplicationPlugin {
         app.add_systems(
             Update,
             (
-                ((sys_enqueue_movements, sys_predict_player_pos).chain()),
+                ((
+                    sys_enqueue_movements.run_if(resource_changed::<wish_dir::WishDir>),
+                    sys_enqueue_movements.run_if(resource_added::<wish_dir::WishDir>),
+                    sys_predict_player_pos,
+                )
+                    .chain()),
                 ((
                     sys_on_world_state.run_if(on_event::<events::WorldStateEvent>()),
                     sys_sync_positions, // TODO: pipe
                 )
                     .chain()),
                 sys_clear_input_cache,
+                sys_cleanup.run_if(on_event::<events::DisconnectedEvent>()),
             )
                 .in_set(SystemSets::Replication),
         );
 
-        #[cfg(debug_assertions)]
+        /*#[cfg(debug_assertions)]
         {
             app.add_systems(
                 Update,
                 sys_debug_replication.in_set(SystemSets::Replication),
             );
-        }
+        }*/
     }
 }

@@ -11,7 +11,7 @@ pub struct Connection {
     connection: stream::Connection,
     ping_timer: Timer,
     client_info: net::ClientInfo,
-    movement_inputs: Vec<(u8, Vec3)>,
+    movement_inputs: Vec<(Duration, u8, Vec3)>,
 }
 
 impl Connection {
@@ -26,8 +26,8 @@ impl Connection {
     }
 
     /// Queue a movement input to be sent out
-    pub fn enqueue_input(&mut self, stamp: u8, input: Vec3) {
-        self.movement_inputs.push((stamp, input));
+    pub fn enqueue_input(&mut self, timestamp: Duration, seq: u8, input: Vec3) {
+        self.movement_inputs.push((timestamp, seq, input));
     }
 
     fn new(conn: stream::Connection, client_info: net::ClientInfo) -> Self {
@@ -45,7 +45,6 @@ fn sys_net_send_ping(time: Res<Time>, mut conn: ResMut<Connection>) -> stream::R
     conn.ping_timer.tick(time.delta());
     if conn.ping_timer.just_finished() {
         conn.connection.ping()?;
-        log::debug!("ping");
     }
     Ok(())
 }
@@ -55,11 +54,16 @@ fn sys_net_send_ping(time: Res<Time>, mut conn: ResMut<Connection>) -> stream::R
 fn sys_net_send_movement(mut conn: ResMut<Connection>) -> stream::Result<()> {
     conn.movement_inputs
         .drain(..)
-        .collect::<Vec<(u8, Vec3)>>()
+        .collect::<Vec<(Duration, u8, Vec3)>>()
         .into_iter()
-        .try_for_each(|(stamp, dir)| {
+        .try_for_each(|(timestamp, seq, dir)| {
             conn.connection
-                .send_command(0, stamp, packet::MovementDirection::from(dir).0)?;
+                .send_packet(lib_spells::net::packet::Packet {
+                    timestamp,
+                    seq,
+                    command_type: packet::PacketType::Move,
+                    command_data: packet::PacketData::Movement(dir.into())
+                })?;
             Ok(())
         })
 }
@@ -97,24 +101,24 @@ fn sys_check_connection(world: &mut World) {
     world.resource_scope(|world, mut connection: Mut<Connection>| {
         match connection.connection.read() {
             Ok(reads) => {
-                for (stamp, state) in reads {
+                for (seq, state) in reads {
                     world
                         .get_resource_mut::<Events<events::WorldStateEvent>>()
                         .unwrap()
                         .send(events::WorldStateEvent {
-                            stamp: Some(stamp),
+                            seq: Some(seq),
                             client_info: connection.client_info,
                             state,
                         });
                 }
             }
             Err(err) => {
-                log::debug!("removed connection resource: {:?}", err);
                 world
                     .get_resource_mut::<Events<events::DisconnectedEvent>>()
                     .unwrap()
                     .send(events::DisconnectedEvent(Some(err.to_string())));
                 world.remove_resource::<Connection>();
+                log::debug!("removed connection: {:?}", err);
             }
         }
     });
@@ -158,15 +162,6 @@ fn sys_connect(In((addr, password)): In<(String, Option<String>)>, world: &mut W
 
     world.insert_resource(Connecting { handle });
 }
-
-fn is_connecting(conn: Option<Res<Connecting>>) -> bool {
-    conn.is_some()
-}
-
-fn is_connection(conn: Option<Res<Connection>>) -> bool {
-    conn.is_some()
-}
-
 pub struct WorldConnectionPlugin;
 
 impl Plugin for WorldConnectionPlugin {
@@ -176,7 +171,7 @@ impl Plugin for WorldConnectionPlugin {
         app.add_systems(
             Update,
             (
-                sys_check_connecting.run_if(is_connecting),
+                sys_check_connecting.run_if(resource_exists::<Connecting>),
                 (
                     sys_check_connection.in_set(SystemSets::NetFetch),
                     (
@@ -185,7 +180,7 @@ impl Plugin for WorldConnectionPlugin {
                     )
                         .in_set(SystemSets::NetSend),
                 )
-                    .run_if(is_connection),
+                    .run_if(resource_exists::<Connection>),
             ),
         );
     }
