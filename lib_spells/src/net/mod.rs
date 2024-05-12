@@ -5,8 +5,6 @@ use bevy_math::*;
 use bincode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{self, Display};
-use strum_macros::FromRepr;
 pub type SerializationError = bincode::ErrorKind;
 
 // we making it into the mental asylum with this one
@@ -137,22 +135,3 @@ pub fn deserialize<'a, T: Deserialize<'a>>(data: &'a [u8]) -> Result<T, Serializ
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_dir_to_vec() {
-        let dir = MovementDirection(MOVE_RIGHT | MOVE_UP | MOVE_DOWN | MOVE_FORWARD);
-        let expect = Vec3::new(1.0, 0.0, -1.0);
-        assert_eq!(Vec3::from(dir), expect);
-        let dir = MovementDirection(MOVE_NONE);
-        assert_eq!(Vec3::from(dir), Vec3::ZERO);
-    }
-
-    #[test]
-    fn test_vec_to_dir() {
-        let vec = Vec3::new(1.0, 0.0, -1.0);
-        assert!(MovementDirection::from(vec).0 & MOVE_RIGHT > 0);
-    }
-}

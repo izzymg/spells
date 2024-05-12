@@ -1,13 +1,15 @@
-mod movement;
 mod server;
+
 use crate::game;
 use bevy::{app, log, prelude::*, tasks::IoTaskPool};
-use lib_spells::{net, shared};
-use server::packet;
-use std::{
-    collections::HashMap,
-    sync::mpsc,
+use lib_spells::{
+    net::{self, packet},
+    shared,
 };
+use std::{collections::HashMap, sync::mpsc, time::Duration};
+
+#[derive(Component, Debug)]
+struct LastMovementPacket(Option<Duration>);
 
 #[derive(Resource, Debug, Default)]
 struct ActiveClientInfo(server::ActiveClientInfo);
@@ -20,6 +22,7 @@ fn spawn_client(commands: &mut Commands, id: &str) -> Entity {
             shared::Name(format!("Player {}", id)),
             shared::Position(Vec3::ZERO),
             shared::Velocity(Vec3::ZERO),
+            LastMovementPacket(None),
         ))
         .id()
 }
@@ -73,44 +76,25 @@ fn sys_process_incoming(
 
 fn sys_process_client_packets(
     In(packets): In<HashMap<Entity, Vec<packet::Packet>>>,
-    mut q_velocity_pos: Query<(
-        Entity,
-        &mut shared::Position,
-        &mut shared::Velocity,
-    )>,
-    time: Res<Time>,
+    mut q_velocity_pos: Query<(Entity, &mut shared::Position, &mut shared::Velocity, &mut LastMovementPacket)>,
 ) {
-    for (entity, mut pos, mut vel) in q_velocity_pos.iter_mut() {
+    for (entity, mut pos, mut vel, mut last_packet) in q_velocity_pos.iter_mut() {
         let entity_packets = packets.get(&entity);
         let movement_packets = entity_packets.iter().flat_map(|p| {
-            p.iter()
-                .filter_map(|p| movement::MovementPacket::from_packet(*p))
+            p.iter().filter_map(|p| match p.command_data {
+                packet::PacketData::Movement(dir) => Some((p.timestamp, dir)),
+                _ => None,
+            })
         });
 
-        // should have travelled. e.g., if they were moving at n (m/s) forward when t = 1,
-        // then they moved left at t = 3, p = n * (t3 - t2)
-
-        /*
-        // process all packets, setting new pos + vel by time between last packet
-        let mut last_packet_timestamp = prev_update.0;
-        for packet in movement_packets {
-            let t = packet.timestamp.duration_since(last_packet_timestamp);
-            log::debug!("since last: {}ms", t.as_millis());
-            pos.0 += vel.0 * t.as_secs_f32();
-            vel.0 = Vec3::from(packet.direction);
-            last_packet_timestamp = packet.timestamp;
+        for (time, dir) in movement_packets {
+            if let Some(lts) = last_packet.0 {
+                let t = (time - lts).as_secs_f32();
+                pos.0 += vel.0 * t;
+                vel.0 = Vec3::from(dir);
+            }
+            last_packet.0 = Some(time);
         }
-
-        if let Some(last_update) = time.last_update() {
-            // if there were no packets, we move them as far as the last update, otherwise since the
-            // last packet was received
-            let t = last_update.duration_since(last_packet_timestamp);
-            let new_pos = pos.0 + (vel.0 * t.as_secs_f32());
-            log::debug!("inferred: {} -> {} ({}ms)", pos.0, new_pos, t.as_millis());
-            pos.0 = new_pos;
-        }
-        prev_update.0 = time.last_update().unwrap_or(time.startup());
-        */
     }
 }
 

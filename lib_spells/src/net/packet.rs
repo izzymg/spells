@@ -1,16 +1,65 @@
 use bevy_math::prelude::*;
 use std::fmt::{self, Display};
+use std::mem::size_of;
+use std::time::Duration;
 use strum_macros::FromRepr;
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Packet {
+    pub timestamp: Duration,
+    pub seq: u8,
+    pub command_type: PacketType,
+    pub command_data: PacketData,
+}
+
+impl Packet {
+    fn concat_with_header(&self, payload: &[u8]) -> Vec<u8> {
+        let timestamp_bytes = (self.timestamp.as_millis() as u64).to_le_bytes();
+        [
+            &timestamp_bytes[..],
+            &[self.seq],
+            &[self.command_type as u8],
+            payload,
+        ]
+        .concat()
+    }
+    pub fn serialize(&self) -> Vec<u8> {
+        match self.command_data {
+            PacketData::Noop => self.concat_with_header(&[0]),
+            PacketData::Movement(dir) => self.concat_with_header(&[dir.0]),
+        }
+    }
+
+    pub fn deserialize(payload: &[u8]) -> Result<Self, InvalidPacketError> {
+        // timestamp + seq + command
+        let expect_bytes = size_of::<u64>() + (size_of::<u8>() * 2);
+        if payload.len() < expect_bytes {
+            return Err(InvalidPacketError::ParseError);
+        }
+        let (timestamp, rest) = payload.split_at(size_of::<u64>());
+        let (seq, rest) = rest.split_at(size_of::<u8>());
+        let (cmd, rest) = rest.split_at(size_of::<u8>());
+        let command_type = PacketType::from_byte(cmd[0])?;
+        let command_data = PacketData::parse(command_type, rest)?;
+
+        Ok(Self {
+            timestamp: Duration::from_millis(u64::from_le_bytes(timestamp.try_into().unwrap())),
+            seq: seq[0],
+            command_type,
+            command_data,
+        })
+    }
+}
 
 #[derive(FromRepr, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
-pub(super) enum PacketType {
+pub enum PacketType {
     Move,
 }
 
 impl PacketType {
     /// Return the corresponding packet type given a single byte.
-    fn from_byte(byte: u8) -> Result<Self, InvalidPacketError> {
+    pub fn from_byte(byte: u8) -> Result<Self, InvalidPacketError> {
         match PacketType::from_repr(byte) {
             Some(pt) => Ok(pt),
             None => Err(InvalidPacketError::InvalidPacketType(byte)),
@@ -36,7 +85,8 @@ impl Display for InvalidPacketError {
         }
     }
 }
-#[derive(Debug, Copy, Clone)]
+
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PacketData {
     Movement(MovementDirection),
     Noop,
@@ -122,5 +172,40 @@ impl From<Vec3> for MovementDirection {
         }
 
         Self(movement)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_packet_serialization() {
+        let packet = Packet {
+            timestamp: Duration::from_millis(100),
+            seq: 15,
+            command_type: PacketType::Move,
+            command_data: PacketData::Movement(MovementDirection(MOVE_BACKWARD)),
+        };
+
+        let serialized = packet.serialize();
+        let deserialized = Packet::deserialize(&serialized).unwrap();
+        assert_eq!(packet, deserialized);
+        assert!(Packet::deserialize(&[0, 0, 2, 4, 0]).is_err());
+    }
+
+    #[test]
+    fn test_dir_to_vec() {
+        let dir = MovementDirection(MOVE_RIGHT | MOVE_UP | MOVE_DOWN | MOVE_FORWARD);
+        let expect = Vec3::new(1.0, 0.0, -1.0);
+        assert_eq!(Vec3::from(dir), expect);
+        let dir = MovementDirection(MOVE_NONE);
+        assert_eq!(Vec3::from(dir), Vec3::ZERO);
+    }
+
+    #[test]
+    fn test_vec_to_dir() {
+        let vec = Vec3::new(1.0, 0.0, -1.0);
+        assert!(MovementDirection::from(vec).0 & MOVE_RIGHT > 0);
     }
 }

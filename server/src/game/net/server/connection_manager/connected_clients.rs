@@ -3,20 +3,11 @@ use lib_spells::{message_stream, net::packet};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
-/// Incoming request from a client
-#[derive(Debug, Copy, Clone)]
-pub struct ClientPacket {
-    /// Identifies this `Packet` as belonging to a specific client.
-    pub token: server::Token,
-    /// Millisecond client-provided timestamp. Should be validated for legitimacy.
-    pub timestamp: u32,
-    pub data: packet::PacketData,
-}
-
 #[derive(Debug)]
 pub enum ClientError {
     StreamError(message_stream::MessageStreamError),
     PacketError(packet::InvalidPacketError),
+    MessageError,
 }
 
 impl Display for ClientError {
@@ -27,6 +18,9 @@ impl Display for ClientError {
             }
             Self::PacketError(err) => {
                 write!(f, "packet error: {}", err)
+            }
+            Self::MessageError => {
+                write!(f, "message error")
             }
         }
     }
@@ -150,18 +144,19 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
             .collect()
     }
 
-    pub fn try_receive(&mut self, token: server::Token) -> Result<Vec<ClientPacket>> {
+    pub fn try_receive(&mut self, token: server::Token) -> Result<Vec<packet::Packet>> {
         let mut packets = vec![];
         let client = self.map.get_mut(&token).unwrap();
         for message in client.stream.try_read_messages()? {
+
+            // ping -> pong
             if message_is_ping(&message) {
-                // pong
-                let _ = client.stream.try_write_prefixed(&[0]);
+                let _ = client.stream.try_write_prefixed(&[0])?;
                 continue;
             }
-            let inc_packet: packet::IncomingPacket = (&message[..]).try_into()?;
-            client.stamp = Some(inc_packet.stamp);
-            packets.push(packet::Packet::from_incoming(token, inc_packet)?);
+            let packet = packet::Packet::deserialize(&message)?;
+            client.stamp = Some(packet.seq);
+            packets.push(packet);
         }
 
         Ok(packets)

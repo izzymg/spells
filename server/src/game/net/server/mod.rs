@@ -1,7 +1,6 @@
 /*! TCP server implementation for managing connected game clients */
 
 mod connection_manager;
-pub mod packet;
 
 use mio::net::TcpListener;
 use mio::{Events, Interest, Poll};
@@ -12,11 +11,15 @@ use std::io;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use lib_spells::message_stream;
+use lib_spells::{net::{self, packet}, message_stream};
 
 use bevy::log;
 
 const MAX_MESSAGE_SIZE: usize = 128;
+const SERVER_TOKEN: Token = Token(mio::Token(0));
+const EVENT_BUFFER_SIZE: usize = 1028;
+const MIN_TICK: Duration = Duration::from_millis(100);
+const SERVER_ADDR: &str = "0.0.0.0:7776";
 
 #[derive(Debug, Default, Clone)]
 /// Information about each active client to be sent to the client.
@@ -49,15 +52,6 @@ impl From<Token> for mio::Token {
     }
 }
 
-const SERVER_TOKEN: Token = Token(mio::Token(0));
-
-const EVENT_BUFFER_SIZE: usize = 1028;
-const MIN_TICK: Duration = Duration::from_millis(100);
-
-// these should be in a passed in config
-const SERVER_ADDR: &str = "0.0.0.0:7776";
-// ^
-
 #[derive(Debug)]
 pub enum Incoming {
     Joined(Token),
@@ -68,7 +62,7 @@ pub enum Incoming {
 #[derive(Debug)]
 pub enum Outgoing {
     Kick(Token),
-    Broadcast(lib_spells::net::WorldState),
+    Broadcast(net::WorldState),
     ClientInfo(ActiveClientInfo),
 }
 
@@ -143,7 +137,8 @@ impl Server {
                             .unwrap();
                         manager.manage_stream(
                             new_token,
-                            message_stream::MessageStream::create(stream, MAX_MESSAGE_SIZE).expect("stream creation"),
+                            message_stream::MessageStream::create(stream, MAX_MESSAGE_SIZE)
+                                .expect("stream creation"),
                             ev.is_readable(),
                         );
                     },
