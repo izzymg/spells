@@ -106,7 +106,7 @@ fn sys_check_connection(world: &mut World) {
                         .get_resource_mut::<Events<events::WorldStateEvent>>()
                         .unwrap()
                         .send(events::WorldStateEvent {
-                            seq: Some(seq),
+                            seq,
                             client_info: connection.client_info,
                             state,
                         });

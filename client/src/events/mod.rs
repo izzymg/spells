@@ -9,7 +9,7 @@ pub struct ConnectedEvent;
 /// New world state is available
 #[derive(Debug, Event)]
 pub struct WorldStateEvent {
-    pub seq: Option<u8>,
+    pub seq: u8,
     pub state: net::WorldState,
     pub client_info: net::ClientInfo,
 }

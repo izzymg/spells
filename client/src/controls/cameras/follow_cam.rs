@@ -36,7 +36,7 @@ impl Default for FollowCamera {
             invert_yaw: false,
             yaw: 0.0,
             pitch: 0.0,
-            z_offset: 5.0,
+            z_offset: 15.0,
         }
     }
 }

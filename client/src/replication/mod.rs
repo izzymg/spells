@@ -11,6 +11,7 @@ use bevy::{
 };
 use std::collections::VecDeque;
 use std::time::Duration;
+use lib_spells::shared;
 
 const MAX_INPUTS_CACHED: usize = 200;
 
@@ -84,7 +85,7 @@ impl<'w, 's> ReplicationSys<'w, 's> {
         self.world_to_game.0 .0.contains_key(&world_entity)
     }
 
-    fn integrate(&mut self, mut state: lib_spells::net::WorldState) {
+    fn replicate_state(&mut self, mut state: lib_spells::net::WorldState) {
         // find entities we're tracking that don't exist in this state, and kill them
         let lost = self
             .world_to_game
@@ -122,21 +123,6 @@ impl<'w, 's> ReplicationSys<'w, 's> {
     }
 }
 
-fn sys_sync_positions(
-    mut commands: Commands,
-    pos_query: Query<
-        (Entity, &lib_spells::shared::Position, &Transform),
-        Changed<lib_spells::shared::Position>,
-    >,
-) {
-    for (entity, world_pos, actual_pos) in pos_query.iter() {
-        let error_amt = (world_pos.0.length() - actual_pos.translation.length()).abs();
-        log::debug!("transform sync pass: {:?} error: {}", entity, error_amt);
-        commands
-            .entity(entity)
-            .insert(Transform::from_translation(world_pos.0));
-    }
-}
 #[derive(Debug, Copy, Clone)]
 struct CachedInput {
     wish_dir: Vec3,
@@ -158,6 +144,19 @@ impl InputCache {
         } else {
             0
         }
+    }
+
+    /// Drops all entries up to but not including `seq`, returning dropped count
+    fn drop_to_sequence(&mut self, seq: u8) -> usize {
+        let len = self.0.len();
+        while let Some(ic) = self.front() {
+            if ic.seq < seq {
+                self.pop();
+            } else {
+                break;
+            }
+        }
+        len - self.0.len()
     }
 
     fn pop(&mut self) -> Option<CachedInput> {
@@ -206,11 +205,40 @@ fn sys_clear_input_cache(mut cache: ResMut<InputCache>) {
 fn sys_on_world_state(
     mut state_events: ResMut<Events<events::WorldStateEvent>>,
     mut replication: ReplicationSys,
-    cached: ResMut<InputCache>,
+    mut cached: ResMut<InputCache>,
+    time: Res<Time>,
+    mut predicted_pos_query: Query<(&mut Transform, &shared::Position), With<PredictedPlayer>>,
 ) {
     for state_ev in state_events.drain() {
-        replication.integrate(state_ev.state);
+        replication.replicate_state(state_ev.state);
+        // TODO: this only needs to happen once really
         replication.mark_predicted_player(state_ev.client_info.you);
+
+        let (mut player_actual_pos, player_server_pos) = match predicted_pos_query.get_single_mut() {
+            Ok(v) => v,
+            _ => continue,
+        };
+
+        dbg!(&player_server_pos.0);
+
+        log::debug!(
+            "dropped {} read inputs",
+            cached.drop_to_sequence(state_ev.seq)
+        );
+
+        for (i, input) in cached.iter().enumerate() {
+            // predict to next input, or to current time
+            let t = match cached.get(i + 1) {
+                Some(i) => i.time,
+                None => time.elapsed(),
+            };
+
+            let t_passed = (t - input.time).as_secs_f32();
+            let n_predicted_pos = player_server_pos.0 + (input.wish_dir * t_passed);
+            let error_amt = (n_predicted_pos - player_actual_pos.translation).abs();
+            log::debug!("player predicted {} ({}s), error: {}", n_predicted_pos, t_passed, error_amt);
+            player_actual_pos.translation = n_predicted_pos;
+        }
     }
 }
 
@@ -305,11 +333,7 @@ impl Plugin for ReplicationPlugin {
                     sys_predict_player_pos,
                 )
                     .chain()),
-                ((
-                    sys_on_world_state.run_if(on_event::<events::WorldStateEvent>()),
-                    sys_sync_positions, // TODO: pipe
-                )
-                    .chain()),
+                ((sys_on_world_state.run_if(on_event::<events::WorldStateEvent>()),).chain()),
                 sys_clear_input_cache,
                 sys_cleanup.run_if(on_event::<events::DisconnectedEvent>()),
             )
