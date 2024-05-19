@@ -99,7 +99,7 @@ fn sys_process_client_packets(
                 let t = (time - lts).as_secs_f32();
                 pos.0 += vel.0 * t;
             }
-            vel.0 = Vec3::from(dir);
+            vel.0 = Vec3::from(dir).normalize_or_zero();
             last_t.0 = Some(time);
             last_sequence.0 = seq;
             log::debug!("velocity: {}, pos: {}", vel.0, pos.0);
