@@ -9,9 +9,9 @@ use bevy::{
     log,
     prelude::*,
 };
+use lib_spells::shared;
 use std::collections::VecDeque;
 use std::time::Duration;
-use lib_spells::shared;
 
 const MAX_INPUTS_CACHED: usize = 200;
 
@@ -206,39 +206,53 @@ fn sys_on_world_state(
     mut state_events: ResMut<Events<events::WorldStateEvent>>,
     mut replication: ReplicationSys,
     mut cached: ResMut<InputCache>,
-    time: Res<Time>,
-    mut predicted_pos_query: Query<(&mut Transform, &shared::Position), With<PredictedPlayer>>,
 ) {
     for state_ev in state_events.drain() {
         replication.replicate_state(state_ev.state);
         // TODO: this only needs to happen once really
         replication.mark_predicted_player(state_ev.client_info.you);
 
-        let (mut player_actual_pos, player_server_pos) = match predicted_pos_query.get_single_mut() {
-            Ok(v) => v,
-            _ => continue,
-        };
-
-        dbg!(&player_server_pos.0);
-
         log::debug!(
             "dropped {} read inputs",
             cached.drop_to_sequence(state_ev.seq)
         );
+    }
+}
 
-        for (i, input) in cached.iter().enumerate() {
-            // predict to next input, or to current time
-            let t = match cached.get(i + 1) {
-                Some(i) => i.time,
-                None => time.elapsed(),
-            };
+fn sys_reconcile_player(
+    time: Res<Time>,
+    cached: ResMut<InputCache>,
+    mut predicted_pos_query: Query<(&mut Transform, &shared::Position), With<PredictedPlayer>>,
+) {
+    let (mut player_actual_pos, player_server_pos) = match predicted_pos_query.get_single_mut() {
+        Ok(v) => v,
+        _ => return,
+    };
 
-            let t_passed = (t - input.time).as_secs_f32();
-            let n_predicted_pos = player_server_pos.0 + (input.wish_dir * t_passed);
-            let error_amt = (n_predicted_pos - player_actual_pos.translation).abs();
-            log::debug!("player predicted {} ({}s), error: {}", n_predicted_pos, t_passed, error_amt);
-            player_actual_pos.translation = n_predicted_pos;
-        }
+    let mut replayed_pos = player_server_pos.0;
+    for (i, input) in cached.iter().enumerate() {
+        // predict to next input, or to current time
+        let t = match cached.get(i + 1) {
+            Some(i) => i.time,
+            None => time.elapsed(),
+        };
+        let t_passed = (t - input.time).as_secs_f32();
+        replayed_pos += input.wish_dir * t_passed;
+    }
+    let replay_err = replayed_pos - player_actual_pos.translation;
+    log::debug!(
+        "player predicted pos: {}, error: {}",
+        replayed_pos,
+        replay_err
+    );
+    player_actual_pos.translation = replayed_pos;
+}
+
+fn sys_sync_server_positions(
+    mut pos_query: Query<(&mut Transform, &shared::Position), Without<PredictedPlayer>>,
+) {
+    for (mut transform, pos) in pos_query.iter_mut() {
+        transform.translation = pos.0;
     }
 }
 
@@ -269,46 +283,13 @@ fn sys_predict_player_pos(
     predicted_trans.translation += wish_dir.0 * time.delta_seconds();
 }
 
-#[derive(Debug, Clone)]
-struct DebugReplication {
-    check_timer: Timer,
-}
-
-impl Default for DebugReplication {
-    fn default() -> Self {
-        Self {
-            check_timer: Timer::new(Duration::from_secs(1), TimerMode::Repeating),
-        }
-    }
-}
-
-fn sys_debug_replication(
-    mut debug_data: Local<DebugReplication>,
+/// Figure out "in-between" positions for travelling server objects
+fn sys_interpolate_positions(
     time: Res<Time>,
-    input_cache: Res<InputCache>,
-    predicted_query: Query<&mut Transform, With<PredictedPlayer>>,
+    mut pos_query: Query<(&mut Transform, &shared::Velocity), Without<PredictedPlayer>>,
 ) {
-    debug_data.check_timer.tick(time.delta());
-    if !debug_data.check_timer.just_finished() {
-        return;
-    }
-    let mut predicted_pos = Vec3::ZERO;
-    for (i, input) in input_cache.iter().enumerate() {
-        let cmp = if let Some(next_input) = input_cache.get(i + 1) {
-            next_input.time
-        } else {
-            time.elapsed()
-        };
-
-        predicted_pos += input.wish_dir * (cmp - input.time).as_secs_f32();
-    }
-    if let Ok(real_pos) = predicted_query.get_single() {
-        log::debug!(
-            "DEBUGGING: predicted: {}, actual: {} (err: {})",
-            predicted_pos,
-            real_pos.translation,
-            (predicted_pos - real_pos.translation).abs()
-        );
+    for (mut trans, vel) in pos_query.iter_mut() {
+        trans.translation += vel.0 * time.delta_seconds();
     }
 }
 
@@ -327,25 +308,23 @@ impl Plugin for ReplicationPlugin {
         app.add_systems(
             Update,
             (
+                sys_interpolate_positions,
                 ((
                     sys_enqueue_movements.run_if(resource_changed::<wish_dir::WishDir>),
                     sys_enqueue_movements.run_if(resource_added::<wish_dir::WishDir>),
                     sys_predict_player_pos,
                 )
                     .chain()),
-                ((sys_on_world_state.run_if(on_event::<events::WorldStateEvent>()),).chain()),
+                ((
+                    sys_on_world_state.run_if(on_event::<events::WorldStateEvent>()),
+                    (sys_sync_server_positions, sys_reconcile_player)
+                        .run_if(on_event::<events::ReplicationCompleted>()),
+                )
+                    .chain()),
                 sys_clear_input_cache,
                 sys_cleanup.run_if(on_event::<events::DisconnectedEvent>()),
             )
                 .in_set(SystemSets::Replication),
         );
-
-        /*#[cfg(debug_assertions)]
-        {
-            app.add_systems(
-                Update,
-                sys_debug_replication.in_set(SystemSets::Replication),
-            );
-        }*/
     }
 }

@@ -99,7 +99,7 @@ gen_state!(
 state_map_entities!(aura);
 
 /// Maps a set of entities to their component state for network magic.
-#[derive(Deserialize, Serialize, Debug, Default)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct WorldState {
     pub entity_state_map: HashMap<Entity, EntityState>,
 }

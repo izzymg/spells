@@ -5,13 +5,12 @@ mod connection_manager;
 use mio::net::TcpListener;
 use mio::{Events, Interest, Poll};
 
-use std::collections::HashMap;
 use std::fmt::Display;
 use std::io;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use lib_spells::{net::{self, packet}, message_stream};
+use lib_spells::{net::packet, message_stream};
 
 use bevy::log;
 
@@ -21,13 +20,9 @@ const EVENT_BUFFER_SIZE: usize = 1028;
 const MIN_TICK: Duration = Duration::from_millis(100);
 const SERVER_ADDR: &str = "0.0.0.0:7776";
 
-#[derive(Debug, Default, Clone)]
-/// Information about each active client to be sent to the client.
-pub struct ActiveClientInfo(pub HashMap<Token, lib_spells::net::ClientInfo>);
-
+/// Uniquely identifies a client connected to this server
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Token(mio::Token);
-
 impl Token {
     pub fn new(id: usize) -> Self {
         Self(mio::Token(id))
@@ -52,6 +47,14 @@ impl From<Token> for mio::Token {
     }
 }
 
+/// State update to be written to a client
+#[derive(Debug, Clone)]
+pub struct ClientStateUpdate {
+    pub seq: u8,
+    pub world_state: lib_spells::net::WorldState,
+}
+
+
 #[derive(Debug)]
 pub enum Incoming {
     Joined(Token),
@@ -62,8 +65,8 @@ pub enum Incoming {
 #[derive(Debug)]
 pub enum Outgoing {
     Kick(Token),
-    Broadcast(net::WorldState),
-    ClientInfo(ActiveClientInfo),
+    ClientState(Token, ClientStateUpdate),
+    ClientInfo(Token, lib_spells::net::ClientInfo),
 }
 
 pub struct Server {

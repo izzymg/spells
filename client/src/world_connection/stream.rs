@@ -13,8 +13,6 @@ pub enum ConnectionError {
     IOError(std::io::Error),
     StreamError(message_stream::MessageStreamError),
     InvalidServer,
-    ConnectionEnded,
-    BigMessage(u32),
     BadAddress(std::net::AddrParseError),
     BadData,
 }
@@ -32,12 +30,6 @@ impl Display for ConnectionError {
             }
             Self::InvalidServer => {
                 write!(f, "invalid server response")
-            }
-            Self::ConnectionEnded => {
-                write!(f, "server connection ended")
-            }
-            Self::BigMessage(size) => {
-                write!(f, "message too big: {} bytes", size)
             }
             Self::BadAddress(addr_err) => {
                 write!(f, "bad address: {}", addr_err)
@@ -179,7 +171,6 @@ fn validate_server_messages(messages: &[Vec<u8>]) -> Result<Option<lib_spells::n
     let client_info = match lib_spells::net::deserialize(client_info_raw) {
         Ok(ci) => ci,
         Err(_) => {
-            dbg!(messages);
             return Err(ConnectionError::BadData);
         }
     };

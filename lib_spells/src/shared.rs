@@ -106,14 +106,14 @@ impl CastingSpell {
 }
 
 /// Unit exists in world space.
-#[derive(Debug, Copy, Component, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Copy, Component, Clone, Serialize, Deserialize)]
 pub struct Position(pub Vec3);
 
 /// Unit position delta over time.
-#[derive(Debug, Copy, Component, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Copy, Component, Clone, Serialize, Deserialize)]
 pub struct Velocity(pub Vec3);
 
-#[derive(Deserialize, Serialize, Copy, Clone, Component, Debug)]
+#[derive(Deserialize, Serialize, Default, Copy, Clone, Component, Debug)]
 pub struct Player;
 
 #[derive(Deserialize, Serialize, Clone, Component, Debug)]

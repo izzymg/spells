@@ -81,14 +81,17 @@ impl<T: std::io::Read + std::io::Write> ConnectionManager<T> {
             .collect::<Vec<server::Outgoing>>()
             .into_iter()
             .for_each(|out| match out {
-                server::Outgoing::Broadcast(data) => {
-                    self.connected.broadcast(data);
+                server::Outgoing::ClientState(token, update) => {
+                    if let Err(err) = self.connected.send_state(token, update.seq, update.world_state) {
+                        log::info!("write error: {}", err);
+                        self.kick_client(token);
+                    }
                 }
                 server::Outgoing::Kick(token) => {
                     self.kick_client(token);
                 }
-                server::Outgoing::ClientInfo(info) => {
-                    self.connected.set_current_client_info(info);
+                server::Outgoing::ClientInfo(token, info) => {
+                    self.connected.set_client_info(token, info);
                 }
             });
     }
