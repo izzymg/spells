@@ -24,7 +24,7 @@ pub struct Replicated;
 pub struct PredictedPlayer;
 
 /// Maps World entities to Game entities
-#[derive(Debug, Default)]
+#[derive(Resource, Debug, Default)]
 struct WorldToGameMapper(EntityHashMap<Entity>);
 
 impl EntityMapper for WorldToGameMapper {
@@ -34,18 +34,15 @@ impl EntityMapper for WorldToGameMapper {
     }
 }
 
-/// Need this indirection because we can't access Local inner value *rage*
-#[derive(Debug, Default)]
-struct ReplicationSysWorldToGame(WorldToGameMapper);
-
 #[derive(Component, Debug, Default)]
 struct LastVelocityChange(Option<Duration>);
 
 #[derive(SystemParam)]
 struct ReplicationSys<'w, 's> {
     commands: Commands<'w, 's>,
-    world_to_game: Local<'s, ReplicationSysWorldToGame>,
+    world_to_game: ResMut<'w, WorldToGameMapper>,
     replication_completed_ev: ResMut<'w, Events<events::ReplicationCompleted>>,
+    replicated_query: Query<'w, 's, Entity, With<Replicated>>,
 }
 
 #[derive(Bundle, Default)]
@@ -55,46 +52,54 @@ struct ReplicatedObjectBundle {
 }
 
 impl<'w, 's> ReplicationSys<'w, 's> {
+
+    /// Clear all replicated objects & the world to game state
+    fn destroy(&mut self) {
+        for entity in self.replicated_query.iter() {
+            self.commands.entity(entity).despawn_recursive();
+        }
+        self.world_to_game.0.clear();
+    }
+
     fn update_world_entity(
         &mut self,
         world_entity: Entity,
         mut state: lib_spells::net::EntityState,
     ) {
-        let game_entity = *self.world_to_game.0 .0.get(&world_entity).unwrap();
-
-        state.map_entities(&mut self.world_to_game.0);
+        let game_entity = *self.world_to_game.0.get(&world_entity).unwrap();
+        state.map_entities(self.world_to_game.as_mut());
         self.commands.add(lib_spells::net::AddEntityStateCommand {
             entity: game_entity,
             entity_state: state,
         });
     }
 
-    fn spawn_world_entity(&mut self, world_entity: Entity) {
+    fn spawn_world_entity(&mut self, world_entity: Entity) -> Entity {
         let game_entity = self.commands.spawn(ReplicatedObjectBundle::default()).id();
-        self.world_to_game.0 .0.insert(world_entity, game_entity);
+        self.world_to_game.0.insert(world_entity, game_entity);
         log::debug!(
             "spawned world entity {:?} -> {:?}",
             world_entity,
             game_entity
         );
+        game_entity
     }
 
     fn despawn_world_entity(&mut self, world_entity: Entity) {
-        let game_entity = self.world_to_game.0 .0.remove(&world_entity).unwrap();
+        let game_entity = self.world_to_game.0.remove(&world_entity).unwrap();
         self.commands.entity(game_entity).despawn_recursive();
         log::debug!("despawned world entity {:?}", world_entity);
     }
 
     fn has_world_entity(&self, world_entity: Entity) -> bool {
-        self.world_to_game.0 .0.contains_key(&world_entity)
+        self.world_to_game.0.contains_key(&world_entity)
     }
 
-    fn replicate_state(&mut self, mut state: lib_spells::net::WorldState) {
+    fn replicate_state(&mut self, mut state: lib_spells::net::WorldState, server_player_entity: Entity) {
         // find entities we're tracking that don't exist in this state, and kill them
         let lost = self
             .world_to_game
             .0
-             .0
             .iter()
             .filter_map(|(world_entity, _)| {
                 state
@@ -111,18 +116,16 @@ impl<'w, 's> ReplicationSys<'w, 's> {
 
         for (world_entity, state) in state.entity_state_map.drain() {
             if !self.has_world_entity(world_entity) {
-                self.spawn_world_entity(world_entity);
+                let spawned = self.spawn_world_entity(world_entity);
+                if world_entity == server_player_entity {
+                    log::debug!("marking player server entity {:?}", world_entity);
+                    self.commands.entity(spawned).insert(PredictedPlayer);
+                }
             }
             self.update_world_entity(world_entity, state);
         }
         self.replication_completed_ev
             .send(events::ReplicationCompleted);
-    }
-
-    /// Marks the given world entity as being predicted by this client.
-    fn mark_predicted_player(&mut self, world_entity: Entity) {
-        let game_entity = self.world_to_game.0 .0.get(&world_entity).unwrap();
-        self.commands.entity(*game_entity).insert(PredictedPlayer);
     }
 }
 
@@ -211,9 +214,7 @@ fn sys_replicate_world_state(
     mut cached: ResMut<InputCache>,
 ) {
     for state_ev in state_events.drain() {
-        replication.replicate_state(state_ev.state);
-        // TODO: this only needs to happen once really
-        replication.mark_predicted_player(state_ev.client_info.you);
+        replication.replicate_state(state_ev.state, state_ev.client_info.you);
         cached.drop_to_sequence(state_ev.seq);
     }
 }
@@ -310,11 +311,9 @@ fn sys_extrapolate_positions(
     }
 }
 
-fn sys_cleanup(mut commands: Commands, replication_query: Query<Entity, With<Replicated>>) {
+fn sys_cleanup(mut replication: ReplicationSys) {
     log::debug!("cleaning up replicated objects");
-    for entity in replication_query.iter() {
-        commands.entity(entity).despawn_recursive();
-    }
+    replication.destroy();
 }
 
 pub struct ReplicationPlugin;
@@ -322,10 +321,13 @@ pub struct ReplicationPlugin;
 impl Plugin for ReplicationPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(InputCache::default());
+        app.insert_resource(WorldToGameMapper::default());
         app.add_systems(
             Update,
             (
-                (sys_mark_velocity_change, sys_extrapolate_positions).after(sys_replicate_world_state).chain(),
+                (sys_mark_velocity_change, sys_extrapolate_positions)
+                    .after(sys_replicate_world_state)
+                    .chain(),
                 ((
                     sys_enqueue_movements.run_if(resource_changed::<wish_dir::WishDir>),
                     sys_enqueue_movements.run_if(resource_added::<wish_dir::WishDir>),

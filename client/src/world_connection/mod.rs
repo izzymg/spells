@@ -62,7 +62,7 @@ fn sys_net_send_movement(mut conn: ResMut<Connection>) -> stream::Result<()> {
                     timestamp,
                     seq,
                     command_type: packet::PacketType::Move,
-                    command_data: packet::PacketData::Movement(dir.into())
+                    command_data: packet::PacketData::Movement(dir.into()),
                 })?;
             Ok(())
         })
@@ -98,6 +98,7 @@ impl WorldConnectSys {
 
 /// Check for disconnection and dispatch incoming data.
 fn sys_check_connection(world: &mut World) {
+    let mut conn_err = None;
     world.resource_scope(|world, mut connection: Mut<Connection>| {
         match connection.connection.read() {
             Ok(reads) => {
@@ -117,11 +118,14 @@ fn sys_check_connection(world: &mut World) {
                     .get_resource_mut::<Events<events::DisconnectedEvent>>()
                     .unwrap()
                     .send(events::DisconnectedEvent(Some(err.to_string())));
-                world.remove_resource::<Connection>();
-                log::debug!("removed connection: {:?}", err);
+                conn_err = Some(err);
             }
         }
     });
+    if let Some(err) = conn_err {
+        log::debug!("removed connection: {:?}", err);
+        world.remove_resource::<Connection>();
+    }
 }
 
 fn sys_check_connecting(world: &mut World) {
@@ -172,15 +176,20 @@ impl Plugin for WorldConnectionPlugin {
             Update,
             (
                 sys_check_connecting.run_if(resource_exists::<Connecting>),
+                // !!! DO NOT CONSOLIDATE RESOURCE CHECK, IT BREAKS
                 (
-                    sys_check_connection.in_set(SystemSets::NetFetch),
-                    (
-                        sys_net_send_ping.pipe(sys_net_handle_error),
-                        sys_net_send_movement.pipe(sys_net_handle_error),
-                    )
+                    sys_check_connection
+                        .in_set(SystemSets::NetFetch)
+                        .run_if(resource_exists::<Connection>),
+                    sys_net_send_ping
+                        .pipe(sys_net_handle_error)
+                        .run_if(resource_exists::<Connection>)
                         .in_set(SystemSets::NetSend),
-                )
-                    .run_if(resource_exists::<Connection>),
+                    sys_net_send_movement
+                        .pipe(sys_net_handle_error)
+                        .run_if(resource_exists::<Connection>)
+                        .in_set(SystemSets::NetSend),
+                ),
             ),
         );
     }

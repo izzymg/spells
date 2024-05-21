@@ -24,6 +24,10 @@ pub struct GenerateTerrainEvent {
     pub terrain: terrain::VoxelTerrain,
 }
 
+/// Instruct a destruction of all terrain entities
+#[derive(Debug, Event)]
+pub struct DestroyTerrainEvent;
+
 #[derive(Debug, Event)]
 pub struct ReplicationCompleted;
 
@@ -35,6 +39,7 @@ impl Plugin for EventsPlugin {
         app.add_event::<ConnectedEvent>();
         app.add_event::<DisconnectedEvent>();
         app.add_event::<GenerateTerrainEvent>();
+        app.add_event::<DestroyTerrainEvent>();
         app.add_event::<ReplicationCompleted>();
     }
 }

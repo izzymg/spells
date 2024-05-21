@@ -1,6 +1,26 @@
-use crate::{controls::cameras, replication};
+use crate::{controls::cameras, events, render::terrain, replication};
 use bevy::prelude::*;
 use lib_spells::shared;
+
+#[derive(Component)]
+pub struct Cleanup;
+
+pub fn sys_cleanup(mut commands: Commands, cleanup_query: Query<Entity, With<Cleanup>>, mut destroy_terrain_ev: EventWriter<events::DestroyTerrainEvent>) {
+    for entity in cleanup_query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    destroy_terrain_ev.send(events::DestroyTerrainEvent);
+}
+
+pub fn sys_create_map(mut terrain_event_send: EventWriter<events::GenerateTerrainEvent>) {
+    let mut terrain = terrain::VoxelTerrain::default();
+    for x in 0..50 {
+        for y in 0..25 {
+            terrain.0.push(terrain::Voxel(x, 0, y));
+        }
+    }
+    terrain_event_send.send(events::GenerateTerrainEvent { terrain });
+}
 
 /// Add rendering to all new `Player` entities.
 pub fn sys_add_player_rendering(
@@ -13,11 +33,14 @@ pub fn sys_add_player_rendering(
     let player_mat = materials.add(Color::BLUE);
 
     for player_entity in query.iter() {
-        commands.entity(player_entity).insert(PbrBundle {
-            mesh: player_mesh.clone(),
-            material: player_mat.clone(),
-            ..default()
-        });
+        commands.entity(player_entity).insert((
+            Cleanup,
+            PbrBundle {
+                mesh: player_mesh.clone(),
+                material: player_mat.clone(),
+                ..default()
+            },
+        ));
     }
 }
 
@@ -31,6 +54,7 @@ pub fn sys_follow_cam_predicted_player(
     commands.spawn((
         camera,
         cameras::follow_cam::FollowCamera::default(),
+        Cleanup,
     ));
 
     // tell our camera to follow the controlled player

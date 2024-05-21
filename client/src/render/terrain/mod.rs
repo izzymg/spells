@@ -198,6 +198,16 @@ impl<'w, 's> TerrainGenerationSysParams<'w, 's> {
     }
 }
 
+fn sys_destroy_terrain(
+    mut sys: TerrainGenerationSysParams,
+    mut destroy_ev: EventReader<events::DestroyTerrainEvent>,
+) {
+    for ev in destroy_ev.read() {
+        log::info!("destroying terrain");
+        sys.despawn_all_voxels();
+    }
+}
+
 fn sys_generate_terrain(
     mut sys_params: TerrainGenerationSysParams,
     mut voxel_terrain_ev: EventReader<events::GenerateTerrainEvent>,
@@ -260,7 +270,14 @@ impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.insert_resource(TerrainAssets::default());
         app.add_systems(Startup, sys_populate_assets_ev);
-        app.add_systems(Update, sys_generate_terrain);
+        app.add_systems(
+            Update,
+            sys_generate_terrain.run_if(on_event::<events::GenerateTerrainEvent>()),
+        );
+        app.add_systems(
+            Update,
+            sys_destroy_terrain.run_if(on_event::<events::DestroyTerrainEvent>()),
+        );
     }
 }
 
