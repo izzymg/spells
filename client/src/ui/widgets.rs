@@ -1,11 +1,11 @@
 use bevy::{ecs::system::Command, input::keyboard, prelude::*};
 
-pub(super) const ACCENT_COLOR: Color = Color::VIOLET;
-pub const ACCENT_COLOR_DARK: Color = Color::PURPLE;
-pub const BTN_BG: Color = Color::hsl(0.0, 0.0, 0.2);
-pub const BTN_HOVER: Color = Color::hsl(0.0, 0.0, 0.1);
+const ACCENT_COLOR: Color = Color::VIOLET;
+const ACCENT_COLOR_DARK: Color = Color::PURPLE;
+const BTN_BG: Color = Color::hsl(0.0, 0.0, 0.2);
+const BTN_HOVER: Color = Color::hsl(0.0, 0.0, 0.1);
 
-fn text_style() -> TextStyle {
+pub fn text_style() -> TextStyle {
     TextStyle {
         font: default(),
         font_size: 18.0,
@@ -13,7 +13,7 @@ fn text_style() -> TextStyle {
     }
 }
 
-pub(super) fn btn() -> ButtonBundle {
+pub fn btn() -> ButtonBundle {
     ButtonBundle {
         style: Style {
             border: UiRect::all(Val::Px(1.0)),
@@ -30,11 +30,11 @@ pub(super) fn btn() -> ButtonBundle {
     }
 }
 
-pub(super) fn text(value: String) -> TextBundle {
+pub fn text(value: String) -> TextBundle {
     TextBundle::from_section(value, text_style())
 }
 
-pub(super) fn title_text(value: String) -> TextBundle {
+pub fn title_text(value: String) -> TextBundle {
     TextBundle::from_section(
         value,
         TextStyle {
@@ -92,9 +92,9 @@ pub(super) fn sys_text_input_deletions(
 }
 
 #[derive(Component, Debug)]
-pub(super) struct TextInput;
+pub struct TextInput;
 
-pub(super) struct CreateTextInputCommand {
+pub struct CreateTextInputCommand {
     pub initial_val: String,
     pub parent: Option<Entity>,
 }

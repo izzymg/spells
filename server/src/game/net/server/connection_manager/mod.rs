@@ -2,8 +2,8 @@
 broadcast, etc */
 use crate::game::net::server;
 use bevy::log;
-use std::sync::mpsc;
 use lib_spells::message_stream;
+use std::sync::mpsc;
 
 mod connected_clients;
 mod pending_clients;
@@ -76,21 +76,24 @@ impl<T: std::io::Read + std::io::Write> ConnectionManager<T> {
     }
 
     fn check_outgoing(&mut self) {
-        match self.out_rx.try_recv() {
-            Ok(server::Outgoing::Broadcast(data)) => {
-                self.connected.send_to(&self.connected.get_send_targets(), &data);
-            }
-            Ok(server::Outgoing::Kick(token)) => {
-                self.kick_client(token);
-            }
-            Ok(server::Outgoing::ClientInfo(info)) => {
-                self.connected.set_current_client_info(info);
-            }
-            Err(mpsc::TryRecvError::Disconnected) => {
-                panic!("receiver disconnected");
-            }
-            Err(mpsc::TryRecvError::Empty) => {}
-        }
+        self.out_rx
+            .try_iter()
+            .collect::<Vec<server::Outgoing>>()
+            .into_iter()
+            .for_each(|out| match out {
+                server::Outgoing::ClientState(token, update) => {
+                    if let Err(err) = self.connected.send_state(token, update.seq, update.world_state) {
+                        log::info!("write error: {}", err);
+                        self.kick_client(token);
+                    }
+                }
+                server::Outgoing::Kick(token) => {
+                    self.kick_client(token);
+                }
+                server::Outgoing::ClientInfo(token, info) => {
+                    self.connected.set_client_info(token, info);
+                }
+            });
     }
 
     fn read_pending_validation(&mut self, token: server::Token) {

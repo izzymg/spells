@@ -44,8 +44,7 @@ pub fn run_game_server() -> Result<(), Box<dyn Error>> {
 
     let mut app = app::App::new();
 
-    match &cli.command {
-        Some(Commands::Scene { name }) => {
+    match &cli.command { Some(Commands::Scene { name }) => {
             if let Some(scene_sys) = scenes::get_scene(name) {
                 println!("starting scene {}", name);
                 app.add_systems(Startup, scene_sys);
@@ -91,7 +90,7 @@ pub fn run_game_server() -> Result<(), Box<dyn Error>> {
         )
             .chain(),
     )
-    .insert_resource(Time::<Fixed>::from_hz(0.5))
+    .insert_resource(Time::<Fixed>::from_hz(20.0))
     .run();
     Ok(())
 }

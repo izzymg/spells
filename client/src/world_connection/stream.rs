@@ -13,8 +13,6 @@ pub enum ConnectionError {
     IOError(std::io::Error),
     StreamError(message_stream::MessageStreamError),
     InvalidServer,
-    ConnectionEnded,
-    BigMessage(u32),
     BadAddress(std::net::AddrParseError),
     BadData,
 }
@@ -32,12 +30,6 @@ impl Display for ConnectionError {
             }
             Self::InvalidServer => {
                 write!(f, "invalid server response")
-            }
-            Self::ConnectionEnded => {
-                write!(f, "server connection ended")
-            }
-            Self::BigMessage(size) => {
-                write!(f, "message too big: {} bytes", size)
             }
             Self::BadAddress(addr_err) => {
                 write!(f, "bad address: {}", addr_err)
@@ -76,7 +68,6 @@ impl From<std::io::Error> for ConnectionError {
 #[derive(Debug)]
 pub struct Connection {
     stream: message_stream::MessageStream<std::net::TcpStream>,
-    stamp: u8,
     last_ping: Option<Instant>,
     pub last_ping_rtt: Option<Duration>,
 }
@@ -85,14 +76,12 @@ impl Connection {
     pub fn new(stream: message_stream::MessageStream<std::net::TcpStream>) -> Self {
         Self {
             stream,
-            stamp: 0,
             last_ping: None,
             last_ping_rtt: None,
         }
     }
 
-    /// Handle incoming messages from the world
-    pub fn read(&mut self) -> Result<Vec<lib_spells::net::WorldState>> {
+    pub fn read(&mut self) -> Result<Vec<(u8, lib_spells::net::WorldState)>> {
         let messages = self.stream.try_read_messages()?;
 
         messages
@@ -105,14 +94,11 @@ impl Connection {
                 }
             });
 
-        Ok(messages
+        messages
             .iter()
             .filter(|m| !message_is_ping(m))
-            .map(|m| lib_spells::net::WorldState::deserialize(m))
-            .collect::<std::result::Result<
-                Vec<lib_spells::net::WorldState>,
-                lib_spells::net::SerializationError,
-            >>()?)
+            .map(|m| deserialize_world_state_message(m))
+            .collect::<Result<Vec<(u8, lib_spells::net::WorldState)>>>()
     }
 
     pub fn ping(&mut self) -> Result<bool> {
@@ -125,16 +111,20 @@ impl Connection {
     }
 
     /// Returns true if the input was actually sent
-    pub fn send_command(&mut self, command: u8, data: u8) -> Result<bool> {
-        let sent = self
-            .stream
-            .try_write_prefixed(&[command, self.stamp, data])?;
-        if sent {
-            self.stamp = self.stamp.checked_add(1).unwrap_or(0);
-        }
-        println!("sent command: {}, {}, {}", sent, command, data);
-        Ok(sent)
+    pub fn send_packet(&mut self, packet: lib_spells::net::packet::Packet) -> Result<bool> {
+        Ok(self.stream.try_write_prefixed(&packet.serialize())?)
     }
+}
+
+/// Get the first sequence byte, parse the rest as world state
+fn deserialize_world_state_message(data: &[u8]) -> Result<(u8, lib_spells::net::WorldState)> {
+    if data.is_empty() {
+        return Err(ConnectionError::BadData);
+    }
+
+    let seq = u8::from_le_bytes(data[0..1].try_into().unwrap());
+    let state: lib_spells::net::WorldState = lib_spells::net::deserialize(&data[1..])?;
+    Ok((seq, state))
 }
 
 pub fn get_connection(
@@ -178,10 +168,9 @@ fn validate_server_messages(messages: &[Vec<u8>]) -> Result<Option<lib_spells::n
         return Ok(None);
     };
 
-    let client_info = match lib_spells::net::ClientInfo::deserialize(client_info_raw) {
+    let client_info = match lib_spells::net::deserialize(client_info_raw) {
         Ok(ci) => ci,
         Err(_) => {
-            dbg!(messages);
             return Err(ConnectionError::BadData);
         }
     };
@@ -209,36 +198,3 @@ fn message_is_ping(message: &[u8]) -> bool {
     message.len() == 1 && message[0] == 0
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    #[ignore]
-    fn test_client_stream() {
-        let init_time = Instant::now();
-        let (mut conn, client_info) = get_connection("0.0.0.0:7776", Some("cat")).unwrap();
-        dbg!(
-            client_info,
-            Instant::now().duration_since(init_time).as_millis()
-        );
-        conn.send_command(0, 1).unwrap();
-        println!("!!!!!");
-        let sent_first_cmd_time = Instant::now();
-        loop {
-            let state = conn.read().unwrap();
-            if state.is_empty() {
-                continue;
-            }
-            dbg!(state);
-            println!(
-                "elapsed since command: {}ms",
-                Instant::now()
-                    .duration_since(sent_first_cmd_time)
-                    .as_millis()
-            );
-            if let Some(latency) = conn.last_ping_rtt {
-                println!("{}ms", latency.as_millis());
-            }
-        }
-    }
-}

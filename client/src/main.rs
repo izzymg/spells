@@ -1,44 +1,56 @@
-pub mod cameras;
+pub mod events;
+pub mod render;
+pub mod controls;
+pub mod replication;
+pub mod debug;
+pub mod dev_scenes;
 pub mod editor;
 pub mod game;
 pub mod input;
-pub mod terrain;
 pub mod ui;
 pub mod window;
 pub mod world_connection;
-pub mod dev_scenes;
-pub mod debug;
 
 use bevy::{log::LogPlugin, prelude::*};
 use std::{env, error::Error};
 
-#[derive(States, Debug, Clone, PartialEq, Eq, Default, Hash)]
-pub enum GameStates {
-    #[default]
-    MainMenu,
-    LoadGame,
-    Game,
-}
 
 #[derive(SystemSet, Clone, Copy, Hash, Eq, PartialEq, Debug)]
 enum SystemSets {
-    NetReceive,
+    NetFetch,
+    NetSend,
     Controls,
+    Input,
+    Replication,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let mut app = App::new();
-    app.init_state::<GameStates>();
+
+    app.configure_sets(
+        Update,
+        (
+            SystemSets::NetFetch,
+            SystemSets::Replication,
+            SystemSets::Input,
+            SystemSets::Controls,
+            SystemSets::NetSend,
+        )
+            .chain(),
+    );
 
     // Diagnostics
     #[cfg(debug_assertions)]
     {
-        app.add_plugins((DefaultPlugins.set(LogPlugin {
-            level: bevy::log::Level::DEBUG,
-            filter: "info,wgpu_core=warn,wgpu_hal=warn,spells=debug".into(),
-            ..Default::default()
-        }), debug::DebugPlugin));
+        app.add_plugins((
+            DefaultPlugins.set(LogPlugin {
+                level: bevy::log::Level::DEBUG,
+                filter: "info,wgpu_core=warn,wgpu_hal=warn,spells=debug".into(),
+                ..Default::default()
+            }),
+            debug::DebugPlugin,
+        ));
     }
 
     // Release logging
@@ -51,19 +63,23 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     app.add_plugins((
         input::InputPlugin,
-        terrain::TerrainPlugin,
         window::WindowPlugin,
-        ui::UiPlugin,
+        events::EventsPlugin,
     ));
 
     if let Some(mode) = args.get(1) {
         match mode.as_str() {
             "editor" => {
                 app.add_plugins(editor::EditorPlugin);
-            },
+            }
             "followcam" => {
                 app.add_plugins(dev_scenes::DevScenesPlugin {
                     scene: dev_scenes::Scene::FollowCamera,
+                });
+            }
+            "replication" => {
+                app.add_plugins(dev_scenes::DevScenesPlugin {
+                    scene: dev_scenes::Scene::Replication,
                 });
             }
             _ => {
@@ -71,10 +87,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     } else {
-        app.add_plugins((
-            world_connection::WorldConnectionPlugin,
-            game::GamePlugin,
-        ));
+        app.add_plugins(game::GamePlugin);
     }
     app.run();
     Ok(())

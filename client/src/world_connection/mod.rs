@@ -1,76 +1,80 @@
 mod stream;
-use crate::game::{controls, replication};
+use crate::{events, SystemSets};
 use bevy::{ecs::system::SystemId, log, prelude::*, tasks};
+use lib_spells::net::{self, packet};
 use std::time::Duration;
-use lib_spells::net;
 
-const PING_FREQUENCY: Duration = Duration::from_secs(4);
-
-#[derive(Debug, Event)]
-pub struct ConnectedEvent;
-
-#[derive(Debug, Event)]
-pub struct WorldStateEvent(pub net::WorldState);
-
-#[derive(Debug, Event)]
-pub struct DisconnectedEvent(pub Option<stream::ConnectionError>);
+const PING_FREQ: Duration = Duration::from_secs(4);
 
 #[derive(Resource, Debug)]
 pub struct Connection {
     connection: stream::Connection,
     ping_timer: Timer,
-    pub client_info: net::ClientInfo,
+    client_info: net::ClientInfo,
+    movement_inputs: Vec<(Duration, u8, Vec3)>,
 }
 
 impl Connection {
-    pub fn get_latency(&self) -> Option<Duration> {
+    /// Returns last-recorded round trip latency
+    pub fn latency(&self) -> Option<Duration> {
         self.connection.last_ping_rtt
     }
+
+    /// Returns client info for this connection
+    pub fn client_info(&self) -> net::ClientInfo {
+        self.client_info
+    }
+
+    /// Queue a movement input to be sent out
+    pub fn enqueue_input(&mut self, timestamp: Duration, seq: u8, input: Vec3) {
+        self.movement_inputs.push((timestamp, seq, input));
+    }
+
     fn new(conn: stream::Connection, client_info: net::ClientInfo) -> Self {
         Self {
             connection: conn,
             client_info,
-            ping_timer: Timer::new(PING_FREQUENCY, TimerMode::Repeating),
+            ping_timer: Timer::new(PING_FREQ, TimerMode::Repeating),
+            movement_inputs: Vec::new(),
         }
-    }
-
-    fn send_movement_input(&mut self, wish_dir: Vec3) -> stream::Result<()> {
-        self.connection.send_command(0, net::MovementDirection::from(wish_dir).0)?;
-        Ok(())
     }
 }
 
-pub fn sys_net_send_ping(time: Res<Time>, mut conn: ResMut<Connection>) -> stream::Result<()> {
+/// Ping the server on a timer
+fn sys_net_send_ping(time: Res<Time>, mut conn: ResMut<Connection>) -> stream::Result<()> {
+    conn.ping_timer.tick(time.delta());
     if conn.ping_timer.just_finished() {
         conn.connection.ping()?;
-        log::debug!("ping");
     }
-    conn.ping_timer.tick(time.delta());
     Ok(())
 }
 
-pub fn sys_net_send_movement(
-    mut conn: ResMut<Connection>,
-    wish_dir_query: Query<
-        &controls::WishDir,
-        (
-            Changed<controls::WishDir>,
-            With<replication::ControlledPlayer>,
-        ),
-    >,
-) -> stream::Result<()> {
-    wish_dir_query
-        .iter()
-        .try_for_each(|wd| conn.send_movement_input(wd.0))
+/// Write all buffered movement inputs
+/// TODO: batching
+fn sys_net_send_movement(mut conn: ResMut<Connection>) -> stream::Result<()> {
+    conn.movement_inputs
+        .drain(..)
+        .collect::<Vec<(Duration, u8, Vec3)>>()
+        .into_iter()
+        .try_for_each(|(timestamp, seq, dir)| {
+            conn.connection
+                .send_packet(lib_spells::net::packet::Packet {
+                    timestamp,
+                    seq,
+                    command_type: packet::PacketType::Move,
+                    command_data: packet::PacketData::Movement(dir.into()),
+                })?;
+            Ok(())
+        })
 }
 
 fn sys_net_handle_error(
     In(err): In<stream::Result<()>>,
-    mut dc_ev_w: EventWriter<DisconnectedEvent>,
+    mut dc_ev_w: EventWriter<events::DisconnectedEvent>,
 ) {
     if let Err(err) = err {
         log::warn!("caught network send error: {}", err);
-        dc_ev_w.send(DisconnectedEvent(Some(err)));
+        dc_ev_w.send(events::DisconnectedEvent(Some(err.to_string())));
     }
 }
 
@@ -93,32 +97,38 @@ impl WorldConnectSys {
 }
 
 /// Check for disconnection and dispatch incoming data.
-fn sys_connection(world: &mut World) {
-    let connection = match world.get_resource_mut::<Connection>() {
-        Some(connection) => connection.into_inner(),
-        None => return,
-    };
-    match connection.connection.read() {
-        Ok(states) => {
-            for state in states {
+fn sys_check_connection(world: &mut World) {
+    let mut conn_err = None;
+    world.resource_scope(|world, mut connection: Mut<Connection>| {
+        match connection.connection.read() {
+            Ok(reads) => {
+                for (seq, state) in reads {
+                    world
+                        .get_resource_mut::<Events<events::WorldStateEvent>>()
+                        .unwrap()
+                        .send(events::WorldStateEvent {
+                            seq,
+                            client_info: connection.client_info,
+                            state,
+                        });
+                }
+            }
+            Err(err) => {
                 world
-                    .get_resource_mut::<Events<WorldStateEvent>>()
+                    .get_resource_mut::<Events<events::DisconnectedEvent>>()
                     .unwrap()
-                    .send(WorldStateEvent(state));
+                    .send(events::DisconnectedEvent(Some(err.to_string())));
+                conn_err = Some(err);
             }
         }
-        Err(err) => {
-            world
-                .get_resource_mut::<Events<DisconnectedEvent>>()
-                .unwrap()
-                .send(DisconnectedEvent(Some(err)));
-            world.remove_resource::<Connection>();
-            log::debug!("removed connection resource");
-        }
+    });
+    if let Some(err) = conn_err {
+        log::debug!("removed connection: {:?}", err);
+        world.remove_resource::<Connection>();
     }
 }
 
-fn sys_connecting(world: &mut World) {
+fn sys_check_connecting(world: &mut World) {
     let mut connecting = match world.get_resource_mut::<Connecting>() {
         Some(connecting) => connecting,
         None => return,
@@ -134,17 +144,17 @@ fn sys_connecting(world: &mut World) {
         Ok((conn, client_info)) => {
             log::debug!("inserted connection resource");
             world
-                .get_resource_mut::<Events<ConnectedEvent>>()
+                .get_resource_mut::<Events<events::ConnectedEvent>>()
                 .unwrap()
-                .send(ConnectedEvent);
+                .send(events::ConnectedEvent);
             world.insert_resource(Connection::new(conn, client_info));
         }
         Err(err) => {
             log::info!("connection failure: {}", err);
             world
-                .get_resource_mut::<Events<DisconnectedEvent>>()
+                .get_resource_mut::<Events<events::DisconnectedEvent>>()
                 .unwrap()
-                .send(DisconnectedEvent(Some(err)));
+                .send(events::DisconnectedEvent(Some(err.to_string())));
         }
     }
 }
@@ -156,31 +166,30 @@ fn sys_connect(In((addr, password)): In<(String, Option<String>)>, world: &mut W
 
     world.insert_resource(Connecting { handle });
 }
-
-fn is_connection(conn: Option<Res<Connection>>) -> bool {
-    conn.is_some()
-}
-
 pub struct WorldConnectionPlugin;
 
 impl Plugin for WorldConnectionPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         let connect_system = app.world.register_system(sys_connect);
-        app.add_event::<ConnectedEvent>();
-        app.add_event::<DisconnectedEvent>();
-        app.add_event::<WorldStateEvent>();
         app.insert_resource(WorldConnectSys::new(connect_system));
         app.add_systems(
             Update,
             (
-                sys_connection,
-                sys_connecting,
-                sys_net_send_ping
-                    .pipe(sys_net_handle_error)
-                    .run_if(is_connection),
-                sys_net_send_movement
-                    .pipe(sys_net_handle_error)
-                    .run_if(is_connection),
+                sys_check_connecting.run_if(resource_exists::<Connecting>),
+                // !!! DO NOT CONSOLIDATE RESOURCE CHECK, IT BREAKS
+                (
+                    sys_check_connection
+                        .in_set(SystemSets::NetFetch)
+                        .run_if(resource_exists::<Connection>),
+                    sys_net_send_ping
+                        .pipe(sys_net_handle_error)
+                        .run_if(resource_exists::<Connection>)
+                        .in_set(SystemSets::NetSend),
+                    sys_net_send_movement
+                        .pipe(sys_net_handle_error)
+                        .run_if(resource_exists::<Connection>)
+                        .in_set(SystemSets::NetSend),
+                ),
             ),
         );
     }

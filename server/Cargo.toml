@@ -21,4 +21,3 @@ clap = { version = "4.5.4", features = ["derive"] }
 serde = "1.0.198"
 test-log = { version = "0.2.15", features = ["trace"] }
 tracing-test = "0.2.4"
-strum_macros = "0.26.2"

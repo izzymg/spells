@@ -2344,7 +2344,6 @@ dependencies = [
  "lib_spells",
  "mio",
  "serde",
- "strum_macros",
  "test-log",
  "tracing-test",
 ]

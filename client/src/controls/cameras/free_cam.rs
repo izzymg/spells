@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::input;
+use crate::{input, SystemSets};
 
 pub struct FreeCameraPlugin;
 impl Plugin for FreeCameraPlugin {
@@ -8,7 +8,7 @@ impl Plugin for FreeCameraPlugin {
         app.add_systems(
             Update,
             (sys_speed_camera, sys_free_camera_look, sys_free_camera_move)
-                .after(input::InputSystemSet),
+                .in_set(SystemSets::Controls),
         );
     }
 }
@@ -63,12 +63,11 @@ fn sys_free_camera_look(
     if cam.invert_yaw {
         delta_x *= -1.0;
     }
-    cam.pitch = (cam.pitch - (cam.look_sensitivity * delta_y))
-        .clamp(-90.0, 90.0);
+    cam.pitch = (cam.pitch - (cam.look_sensitivity * delta_y)).clamp(-90.0, 90.0);
     cam.yaw -= cam.look_sensitivity * delta_x;
 
-    cam_trans.rotation =
-        Quat::from_axis_angle(Vec3::Y, cam.yaw.to_radians()) * Quat::from_axis_angle(Vec3::X, cam.pitch.to_radians());
+    cam_trans.rotation = Quat::from_axis_angle(Vec3::Y, cam.yaw.to_radians())
+        * Quat::from_axis_angle(Vec3::X, cam.pitch.to_radians());
 }
 
 fn sys_free_camera_move(
@@ -89,10 +88,7 @@ fn sys_free_camera_move(
     gizmos.ray(cam_trans.translation, tr, Color::BLUE);
 }
 
-fn sys_speed_camera(
-    mut button_state: ResMut<input::ActionButtons>,
-    mut query: Query<&mut FreeCamera>,
-) {
+fn sys_speed_camera(button_state: Res<input::ActionButtons>, mut query: Query<&mut FreeCamera>) {
     let mut cam = query.single_mut();
     cam.speed = cam.move_speed;
     if button_state.get_button_state(input::Action::Secondary) == input::ButtonState::Held {

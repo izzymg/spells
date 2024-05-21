@@ -1,4 +1,4 @@
-use crate::input;
+use crate::{SystemSets, input};
 use bevy::prelude::*;
 
 pub struct FollowCameraPlugin;
@@ -8,7 +8,7 @@ impl Plugin for FollowCameraPlugin {
             Update,
             (sys_follow_camera_look, sys_camera_input)
                 .chain()
-                .after(input::InputSystemSet),
+                .in_set(SystemSets::Controls),
         );
     }
 }
@@ -32,11 +32,11 @@ impl Default for FollowCamera {
     fn default() -> Self {
         Self {
             look_sensitivity: 0.5,
-            invert_pitch: true,
+            invert_pitch: false,
             invert_yaw: false,
             yaw: 0.0,
             pitch: 0.0,
-            z_offset: 5.0,
+            z_offset: 15.0,
         }
     }
 }
@@ -91,6 +91,6 @@ fn sys_follow_camera_look(
             * Quat::from_axis_angle(Vec3::X, cam.pitch.to_radians()),
     );
 
-    cam_trans.translation = follow_trans.translation + rot.forward() * cam.z_offset;
+    cam_trans.translation = follow_trans.translation + (rot.back() * cam.z_offset);
     cam_trans.look_at(follow_trans.translation, Vec3::Y);
 }

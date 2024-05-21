@@ -1,5 +1,5 @@
-use crate::game::net::{packet, server};
-use lib_spells::message_stream;
+use crate::game::net::server;
+use lib_spells::{message_stream, net::packet};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
@@ -37,31 +37,34 @@ impl From<packet::InvalidPacketError> for ClientError {
 pub type Result<T> = std::result::Result<T, ClientError>;
 
 struct ConnectedClient<T: std::io::Read + std::io::Write> {
+    info_sent: bool,
     stream: message_stream::MessageStream<T>,
-    stamp: Option<u8>,
+    client_info: Option<lib_spells::net::ClientInfo>,
 }
 
 pub struct ConnectedClients<T: std::io::Read + std::io::Write> {
     map: HashMap<server::Token, ConnectedClient<T>>,
-    // clients that need to be sent `ClientInfo`
-    needs_info: HashSet<server::Token>,
     // clients that are OK to send broadcast data to
     send_targets: HashSet<server::Token>,
-    current_client_info: server::ActiveClientInfo,
 }
 
 impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
     pub fn new() -> Self {
         Self {
             map: HashMap::default(),
-            needs_info: HashSet::default(),
             send_targets: HashSet::default(),
-            current_client_info: server::ActiveClientInfo::default(),
         }
     }
 
-    pub fn set_current_client_info(&mut self, info: server::ActiveClientInfo) {
-        self.current_client_info = info;
+    /// Set the `ClientInfo` for the given client. Noop if the token isn't a connected client.
+    pub fn set_client_info(
+        &mut self,
+        token: server::Token,
+        client_info: lib_spells::net::ClientInfo,
+    ) {
+        if let Some(client) = self.map.get_mut(&token) {
+            client.client_info = Some(client_info);
+        }
     }
 
     /// Tries to write info to any clients that need info and we have updated info state for
@@ -69,29 +72,25 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
         &mut self,
     ) -> Vec<(server::Token, message_stream::MessageStreamError)> {
         let mut errors = vec![];
-        self.needs_info.retain(|token| {
-            if let Some(info) = self.current_client_info.0.get(token) {
-                let conn_client = self.map.get_mut(token).unwrap();
-                match conn_client
-                    .stream
-                    .try_write_prefixed(&info.serialize().unwrap())
-                {
-                    Ok(is_done) => {
-                        if is_done {
-                            self.send_targets.insert(*token);
-                            return false;
-                        }
-                        true
-                    }
-                    Err(err) => {
-                        errors.push((*token, err));
-                        false
-                    }
-                }
-            } else {
-                true
+        for (token, client) in self.map.iter_mut() {
+            if self.send_targets.contains(token) {
+                continue;
             }
-        });
+
+            let info = match client.client_info {
+                Some(ci) => ci,
+                None => continue,
+            };
+
+            let serialized_client_info = lib_spells::net::serialize(&info).unwrap();
+            match client.stream.try_write_prefixed(&serialized_client_info) {
+                Ok(did_send) if did_send => {
+                    self.send_targets.insert(*token);
+                }
+                Err(err) => errors.push((*token, err)),
+                _ => {}
+            };
+        }
         errors
     }
 
@@ -100,10 +99,10 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
             token,
             ConnectedClient {
                 stream,
-                stamp: None,
+                client_info: None,
+                info_sent: false,
             },
         );
-        self.needs_info.insert(token);
     }
 
     pub fn remove_client(
@@ -111,7 +110,6 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
         token: server::Token,
     ) -> Option<message_stream::MessageStream<T>> {
         if let Some(stream) = self.map.remove(&token) {
-            self.needs_info.remove(&token);
             self.send_targets.remove(&token);
             Some(stream.stream)
         } else {
@@ -119,46 +117,44 @@ impl<T: std::io::Read + std::io::Write> ConnectedClients<T> {
         }
     }
 
-    pub fn get_send_targets(&self) -> Vec<server::Token> {
-        self.map.keys().copied().collect()
-    }
-
     pub fn has_client(&self, token: server::Token) -> bool {
         self.map.contains_key(&token)
     }
 
-    /// Returns a list of failed writes
-    pub fn send_to(
+    pub fn send_state(
         &mut self,
-        _clients: &[server::Token],
-        data: &[u8],
-    ) -> Vec<(server::Token, message_stream::MessageStreamError)> {
-        self.map
-            .iter_mut()
-            .filter_map(|(token, client)| {
-                let res = client.stream.try_write_prefixed(data);
-                res.is_err().then(|| (*token, res.unwrap_err()))
-            })
-            .collect()
+        token: server::Token,
+        seq: u8,
+        state: lib_spells::net::WorldState,
+    ) -> Result<()> {
+        if !self.send_targets.contains(&token) {
+            return Ok(());
+        }
+
+        let target = self.map.get_mut(&token).unwrap();
+        let serialized_state = lib_spells::net::serialize(&state).unwrap();
+        let data = [&[seq], &serialized_state[..]].concat();
+        target.stream.try_write_prefixed(&data)?;
+        Ok(())
     }
 
     pub fn try_receive(&mut self, token: server::Token) -> Result<Vec<packet::Packet>> {
         let mut packets = vec![];
         let client = self.map.get_mut(&token).unwrap();
         for message in client.stream.try_read_messages()? {
+            // ping -> pong
             if message_is_ping(&message) {
-                // pong
-                let _ = client.stream.try_write_prefixed(&[0]);
+                let _ = client.stream.try_write_prefixed(&[0])?;
                 continue;
             }
-            let inc_packet: packet::IncomingPacket = (&message[..]).try_into()?;
-            client.stamp = Some(inc_packet.stamp);
-            packets.push(packet::Packet::from_incoming(token, inc_packet)?);
+            let packet = packet::Packet::deserialize(&message)?;
+            packets.push(packet);
         }
 
         Ok(packets)
     }
 }
+
 fn message_is_ping(message: &[u8]) -> bool {
     message.len() == 1 && message[0] == 0
 }

@@ -1,19 +1,13 @@
+use super::main_menu_control::{self, ConnectEvent};
+use crate::ui::widgets;
 use bevy::{log, prelude::*};
 
-use crate::ui::widgets;
-
-
-use super::main_menu_control::{self, ConnectEvent};
-
-/// Marker
 #[derive(Component)]
 pub(super) struct MenuItem;
 
-/// Marker
 #[derive(Component)]
 pub(super) struct ConnectButton;
 
-/// Marker
 #[derive(Component)]
 pub(super) struct ConnectionStatusText;
 
@@ -86,10 +80,7 @@ pub(super) fn sys_create_main_menu(mut commands: Commands) {
     });
 }
 
-pub(super) fn sys_destroy_main_menu(
-    mut commands: Commands,
-    query: Query<Entity, With<MenuItem>>,
-) {
+pub(super) fn sys_destroy_main_menu(mut commands: Commands, query: Query<Entity, With<MenuItem>>) {
     log::debug!("cleaning up menu");
 
     for entity in query.iter() {
