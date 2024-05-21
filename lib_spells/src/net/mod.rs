@@ -35,10 +35,20 @@ macro_rules! gen_state {
         })*
 
         impl Command for AddEntityStateCommand {
+            /// Insert or update entity state components for the given entity
             fn apply(self, world: &mut World) {
                 $(
                     if let Some(c) = self.entity_state.$field {
-                        world.get_entity_mut(self.entity).unwrap().insert(c.clone());
+                        match world.get_mut::<$t>(self.entity) {
+                            Some(mut ec) => {
+                                // important that we don't trigger change detection for velocity
+                                // etc
+                                ec.set_if_neq(c);
+                            },
+                            None => {
+                                world.get_entity_mut(self.entity).unwrap().insert(c.clone());
+                            }
+                        }
                     }
                 )*
             }

@@ -9,11 +9,11 @@ use bevy_math::prelude::*;
 pub type SerializationError = bincode::ErrorKind;
 
 /// Entity can be harmed and healed
-#[derive(Deserialize, Serialize, Component, Debug, Copy, Clone)]
+#[derive(Deserialize, Serialize, Component, Debug, PartialEq, Copy, Clone)]
 pub struct Health(pub i64);
 
 /// Represents one aura belonging to the parent of this entity
-#[derive(Deserialize, Serialize, Component, Debug, Clone)]
+#[derive(Deserialize, Serialize, Component, Debug, Clone, PartialEq)]
 pub struct Aura {
     pub id: AuraID,
     pub duration: Timer,
@@ -84,11 +84,11 @@ impl fmt::Display for SpellID {
 }
 
 /// Unit can cast spells
-#[derive(Debug, Component, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Component, Copy, PartialEq, Clone, Serialize, Deserialize)]
 pub struct SpellCaster;
 
 /// Unit is casting a spell
-#[derive(Debug, Component, Clone, Serialize, Deserialize)]
+#[derive(Debug, Component, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CastingSpell {
     pub spell_id: SpellID,
     pub target: Entity,
@@ -106,17 +106,17 @@ impl CastingSpell {
 }
 
 /// Unit exists in world space.
-#[derive(Debug, Default, Copy, Component, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Default, Copy, Component, Clone, Serialize, Deserialize)]
 pub struct Position(pub Vec3);
 
 /// Unit position delta over time.
-#[derive(Debug, Default, Copy, Component, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Copy, Component, Clone, Serialize, Deserialize)]
 pub struct Velocity(pub Vec3);
 
-#[derive(Deserialize, Serialize, Default, Copy, Clone, Component, Debug)]
+#[derive(Deserialize, Serialize, PartialEq, Default, Copy, Clone, Component, Debug)]
 pub struct Player;
 
-#[derive(Deserialize, Serialize, Clone, Component, Debug)]
+#[derive(Deserialize, Serialize, Clone, PartialEq, Component, Debug)]
 pub struct Name(pub String);
 
 

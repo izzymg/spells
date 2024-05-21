@@ -38,11 +38,20 @@ impl EntityMapper for WorldToGameMapper {
 #[derive(Debug, Default)]
 struct ReplicationSysWorldToGame(WorldToGameMapper);
 
+#[derive(Component, Debug, Default)]
+struct LastVelocityChange(Option<Duration>);
+
 #[derive(SystemParam)]
 struct ReplicationSys<'w, 's> {
     commands: Commands<'w, 's>,
     world_to_game: Local<'s, ReplicationSysWorldToGame>,
     replication_completed_ev: ResMut<'w, Events<events::ReplicationCompleted>>,
+}
+
+#[derive(Bundle, Default)]
+struct ReplicatedObjectBundle {
+    rep: Replicated,
+    last_vel: LastVelocityChange,
 }
 
 impl<'w, 's> ReplicationSys<'w, 's> {
@@ -51,12 +60,7 @@ impl<'w, 's> ReplicationSys<'w, 's> {
         world_entity: Entity,
         mut state: lib_spells::net::EntityState,
     ) {
-        let game_entity = *self
-            .world_to_game
-            .0
-             .0
-            .get(&world_entity)
-            .expect("should be mapped");
+        let game_entity = *self.world_to_game.0 .0.get(&world_entity).unwrap();
 
         state.map_entities(&mut self.world_to_game.0);
         self.commands.add(lib_spells::net::AddEntityStateCommand {
@@ -66,7 +70,7 @@ impl<'w, 's> ReplicationSys<'w, 's> {
     }
 
     fn spawn_world_entity(&mut self, world_entity: Entity) {
-        let game_entity = self.commands.spawn(Replicated).id();
+        let game_entity = self.commands.spawn(ReplicatedObjectBundle::default()).id();
         self.world_to_game.0 .0.insert(world_entity, game_entity);
         log::debug!(
             "spawned world entity {:?} -> {:?}",
@@ -111,7 +115,6 @@ impl<'w, 's> ReplicationSys<'w, 's> {
             }
             self.update_world_entity(world_entity, state);
         }
-        log::debug!("world state integration done");
         self.replication_completed_ev
             .send(events::ReplicationCompleted);
     }
@@ -239,12 +242,6 @@ fn sys_reconcile_player(
         let t_passed = (t - input.time).as_secs_f32();
         replayed_pos += input.wish_dir * t_passed;
     }
-    let replay_err = replayed_pos - player_actual_pos.translation;
-    log::debug!(
-        "player predicted pos: {}, error: {}",
-        replayed_pos,
-        replay_err
-    );
     player_actual_pos.translation = replayed_pos;
 }
 
@@ -283,13 +280,37 @@ fn sys_predict_player_pos(
     predicted_trans.translation += wish_dir.0 * time.delta_seconds();
 }
 
-/// Figure out "in-between" positions for travelling server objects
-fn sys_interpolate_positions(
+fn sys_mark_velocity_change(
     time: Res<Time>,
-    mut pos_query: Query<(&mut Transform, &shared::Velocity), Without<PredictedPlayer>>,
+    mut query: Query<
+        (&mut LastVelocityChange, &shared::Velocity),
+        (Without<PredictedPlayer>, Changed<shared::Velocity>),
+    >,
 ) {
-    for (mut trans, vel) in pos_query.iter_mut() {
-        trans.translation += vel.0 * time.delta_seconds();
+    for (mut last_vel, vel) in query.iter_mut() {
+        log::debug!("updating velocity: {:?} {}", last_vel.0, vel.0);
+        last_vel.0 = Some(time.elapsed());
+    }
+}
+/// Figure out "in-between" positions for travelling server objects
+fn sys_extrapolate_positions(
+    time: Res<Time>,
+    mut pos_query: Query<
+        (
+            &mut Transform,
+            &shared::Position,
+            &shared::Velocity,
+            &LastVelocityChange,
+        ),
+        Without<PredictedPlayer>,
+    >,
+) {
+    for (mut transform, server_pos, server_vel, last_vel_change) in pos_query.iter_mut() {
+        let elapsed = match last_vel_change.0 {
+            Some(t) => (time.elapsed() - t).as_secs_f32(),
+            None => 0.,
+        };
+        transform.translation = server_pos.0 + (server_vel.0 * elapsed);
     }
 }
 
@@ -308,7 +329,7 @@ impl Plugin for ReplicationPlugin {
         app.add_systems(
             Update,
             (
-                sys_interpolate_positions,
+                (sys_mark_velocity_change, sys_extrapolate_positions).chain(),
                 ((
                     sys_enqueue_movements.run_if(resource_changed::<wish_dir::WishDir>),
                     sys_enqueue_movements.run_if(resource_added::<wish_dir::WishDir>),
