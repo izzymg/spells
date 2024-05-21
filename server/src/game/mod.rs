@@ -90,7 +90,7 @@ pub fn run_game_server() -> Result<(), Box<dyn Error>> {
         )
             .chain(),
     )
-    .insert_resource(Time::<Fixed>::from_hz(1.0))
+    .insert_resource(Time::<Fixed>::from_hz(20.0))
     .run();
     Ok(())
 }

@@ -205,7 +205,7 @@ fn sys_clear_input_cache(mut cache: ResMut<InputCache>) {
 }
 
 /// Received new world state.
-fn sys_on_world_state(
+fn sys_replicate_world_state(
     mut state_events: ResMut<Events<events::WorldStateEvent>>,
     mut replication: ReplicationSys,
     mut cached: ResMut<InputCache>,
@@ -214,11 +214,7 @@ fn sys_on_world_state(
         replication.replicate_state(state_ev.state);
         // TODO: this only needs to happen once really
         replication.mark_predicted_player(state_ev.client_info.you);
-
-        log::debug!(
-            "dropped {} read inputs",
-            cached.drop_to_sequence(state_ev.seq)
-        );
+        cached.drop_to_sequence(state_ev.seq);
     }
 }
 
@@ -329,7 +325,7 @@ impl Plugin for ReplicationPlugin {
         app.add_systems(
             Update,
             (
-                (sys_mark_velocity_change, sys_extrapolate_positions).chain(),
+                (sys_mark_velocity_change, sys_extrapolate_positions).after(sys_replicate_world_state).chain(),
                 ((
                     sys_enqueue_movements.run_if(resource_changed::<wish_dir::WishDir>),
                     sys_enqueue_movements.run_if(resource_added::<wish_dir::WishDir>),
@@ -337,7 +333,7 @@ impl Plugin for ReplicationPlugin {
                 )
                     .chain()),
                 ((
-                    sys_on_world_state.run_if(on_event::<events::WorldStateEvent>()),
+                    sys_replicate_world_state.run_if(on_event::<events::WorldStateEvent>()),
                     (sys_sync_server_positions, sys_reconcile_player)
                         .run_if(on_event::<events::ReplicationCompleted>()),
                 )
