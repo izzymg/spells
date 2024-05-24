@@ -119,4 +119,3 @@ pub struct Player;
 #[derive(Deserialize, Serialize, Clone, PartialEq, Component, Debug)]
 pub struct Name(pub String);
 
-

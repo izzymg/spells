@@ -1,7 +1,10 @@
-mod game_view;
 mod render;
-use crate::{events, game::GameStates};
+use crate::{events, game::GameStates, window};
 use bevy::prelude::*;
+
+fn sys_setup(mut ns: ResMut<NextState<window::WindowContext>>) {
+    ns.set(window::WindowContext::Play);
+}
 
 fn sys_exit_multiplayer(mut ns: ResMut<NextState<GameStates>>) {
     ns.set(GameStates::MainMenu);
@@ -15,6 +18,7 @@ impl Plugin for MultiplayerPlugin {
         app.add_systems(
             OnEnter(GameStates::Game),
             (
+                sys_setup,
                 render::sys_create_map,
                 render::sys_follow_cam_predicted_player,
             ),
@@ -27,8 +31,6 @@ impl Plugin for MultiplayerPlugin {
         app.add_systems(
             Update,
             (
-                game_view::sys_add_casting_ui,
-                game_view::sys_render_casters_ui,
                 render::sys_add_player_rendering,
                 sys_exit_multiplayer.run_if(on_event::<events::DisconnectedEvent>()),
             )

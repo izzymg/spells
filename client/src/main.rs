@@ -62,6 +62,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }));
 
     app.add_plugins((
+        ui::UiPlugin,
         input::InputPlugin,
         window::WindowPlugin,
         events::EventsPlugin,
@@ -80,6 +81,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             "replication" => {
                 app.add_plugins(dev_scenes::DevScenesPlugin {
                     scene: dev_scenes::Scene::Replication,
+                });
+            },
+            "gameui" => {
+                app.add_plugins(dev_scenes::DevScenesPlugin {
+                    scene: dev_scenes::Scene::GameUI
                 });
             }
             _ => {

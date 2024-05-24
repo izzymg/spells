@@ -8,7 +8,7 @@ use crate::input;
 #[derive(States, Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum WindowContext {
     #[default]
-    UI,
+    Menu,
     Play,
 }
 fn sys_lock_cursor(mut window_query: Query<&mut Window, With<PrimaryWindow>>) {
@@ -40,9 +40,19 @@ impl Plugin for WindowPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<WindowContext>();
         app.add_systems(Startup, sys_set_window_settings);
-        app.add_systems(OnEnter(WindowContext::UI), sys_lock_cursor);
-        app.add_systems(OnEnter(WindowContext::Play), sys_unlock_cursor);
-        app.add_systems(Update, sys_unlock_cursor.run_if(escape_pressed));
-        app.add_systems(Update, sys_lock_cursor.run_if(primary_pressed));
+        app.add_systems(OnEnter(WindowContext::Play), sys_lock_cursor);
+        app.add_systems(OnEnter(WindowContext::Menu), sys_unlock_cursor);
+        app.add_systems(
+            Update,
+            sys_unlock_cursor
+                .run_if(in_state(WindowContext::Play))
+                .run_if(escape_pressed),
+        );
+        app.add_systems(
+            Update,
+            sys_lock_cursor
+                .run_if(in_state(WindowContext::Play))
+                .run_if(primary_pressed),
+        );
     }
 }

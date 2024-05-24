@@ -1,9 +1,13 @@
 mod main_menu_control;
 mod main_menu_view;
-use super::GameStates;
+use crate::{game::GameStates, window};
 use bevy::prelude::*;
 
-pub(super) struct MainMenuPlugin;
+fn sys_setup(mut ns: ResMut<NextState<window::WindowContext>>) {
+    ns.set(window::WindowContext::Menu);
+}
+
+pub struct MainMenuPlugin;
 
 impl Plugin for MainMenuPlugin {
     fn build(&self, app: &mut App) {
@@ -11,7 +15,7 @@ impl Plugin for MainMenuPlugin {
         app.init_resource::<main_menu_control::ConnectionStatus>();
         app.add_systems(
             OnEnter(GameStates::MainMenu),
-            main_menu_view::sys_create_main_menu,
+            (sys_setup, main_menu_view::sys_create_main_menu),
         );
         app.add_systems(
             OnExit(GameStates::MainMenu),
