@@ -5,6 +5,10 @@ const ACCENT_COLOR_DARK: Color = Color::PURPLE;
 const BTN_BG: Color = Color::hsl(0.0, 0.0, 0.2);
 const BTN_HOVER: Color = Color::hsl(0.0, 0.0, 0.1);
 
+pub fn node() -> NodeBundle {
+    NodeBundle { ..Default::default() }
+}
+
 pub fn text_style() -> TextStyle {
     TextStyle {
         font: default(),
@@ -42,6 +46,31 @@ pub fn title_text(value: String) -> TextBundle {
             ..text_style()
         },
     )
+}
+
+#[derive(Bundle, Debug)]
+pub struct GameLayoutBundle {
+    layout: NodeBundle,
+    game_layout: GameLayout,
+}
+
+#[derive(Component, Debug)]
+pub struct GameLayout;
+pub fn game_layout() -> GameLayoutBundle {
+    let root = NodeBundle {
+        style: Style {
+            display: Display::Grid,
+            width: Val::Percent(100.),
+            height: Val::Percent(100.),
+            grid_template_rows: RepeatedGridTrack::fr(6, 1.),
+            grid_template_columns: RepeatedGridTrack::fr(6, 1.),
+            ..Default::default()
+        },
+        background_color: BackgroundColor(Color::rgba(1.0, 0.0, 0.0, 0.1)),
+        ..Default::default()
+    };
+
+    GameLayoutBundle { layout: root, game_layout: GameLayout }
 }
 
 /// Add styles to interactive buttons

@@ -4,18 +4,45 @@ use lib_spells::shared;
 
 const NAME_UI_GAP: f32 = 0.2;
 
-/// Tag
 #[derive(Component)]
 pub struct MultiplayerUIWidget;
-
-/// Tag
 #[derive(Component, Debug)]
 pub struct CastingSpellText(Entity);
+#[derive(Component, Debug)]
+pub struct LayoutPlayerFrameNode;
+#[derive(Component, Debug)]
+pub struct LayoutTargetFrameNode;
 
-pub fn sys_add_health_ui<W: Component>(
+fn unitframe(row: i16, col: i16) -> NodeBundle {
+    let mut node = widgets::node();
+    node.style = Style {
+        grid_row: GridPlacement::start(row),
+        grid_column: GridPlacement::start(col),
+        ..Default::default()
+    };
+    node.background_color = BackgroundColor(Color::rgba(0.0, 1., 0., 0.2));
+    node
+}
+
+pub fn sys_create_layout(mut commands: Commands) {
+    commands.spawn((MultiplayerUIWidget, widgets::game_layout()));
+}
+
+pub fn sys_add_unitframes(
     mut commands: Commands,
-    has_health: Query<&shared::Health, (Added<shared::Health>, With<W>)>,
+    has_game_ui: Query<Entity, With<widgets::GameLayout>>,
 ) {
+    let layout_entity = has_game_ui.single();
+    let player_unitframe = commands
+        .spawn((MultiplayerUIWidget, LayoutPlayerFrameNode, unitframe(4, 2)))
+        .id();
+    let target_unitframe = commands
+        .spawn((MultiplayerUIWidget, LayoutPlayerFrameNode, unitframe(4, 5)))
+        .id();
+
+    commands
+        .entity(layout_entity)
+        .insert_children(2, &[player_unitframe, target_unitframe]);
 }
 
 /// Add the child text entity & tag it when something is casting if there's no text already.

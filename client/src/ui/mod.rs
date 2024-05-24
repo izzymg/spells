@@ -8,10 +8,17 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
+            OnEnter(window::WindowContext::Play),
+            (gameplay::sys_create_layout, gameplay::sys_add_unitframes).chain(),
+        );
+        app.add_systems(
             Update,
             (
-                gameplay::sys_render_casters_ui,
-                gameplay::sys_add_casting_ui,
+                (
+                    gameplay::sys_add_casting_ui,
+                    gameplay::sys_render_casters_ui,
+                )
+                    .chain(),
                 (
                     gameplay::sys_add_aabb,
                     gameplay::sys_render_names_ui,
