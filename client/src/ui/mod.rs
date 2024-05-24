@@ -12,9 +12,13 @@ impl Plugin for UiPlugin {
             (
                 gameplay::sys_render_casters_ui,
                 gameplay::sys_add_casting_ui,
-                gameplay::sys_render_names_ui,
-                gameplay::sys_add_names_ui,
-                gameplay::sys_add_aabb,
+                (
+                    gameplay::sys_add_aabb,
+                    gameplay::sys_render_names_ui,
+                    gameplay::sys_add_names_ui,
+                    gameplay::sys_clear_invalid_names_ui,
+                )
+                    .chain(),
             )
                 .run_if(in_state(window::WindowContext::Play)),
         );

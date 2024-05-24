@@ -12,6 +12,12 @@ pub struct MultiplayerUIWidget;
 #[derive(Component, Debug)]
 pub struct CastingSpellText(Entity);
 
+pub fn sys_add_health_ui<W: Component>(
+    mut commands: Commands,
+    has_health: Query<&shared::Health, (Added<shared::Health>, With<W>)>,
+) {
+}
+
 /// Add the child text entity & tag it when something is casting if there's no text already.
 pub fn sys_add_casting_ui(
     mut commands: Commands,
@@ -72,6 +78,7 @@ pub fn sys_add_aabb(
                 .half_extents
                 .into(),
         });
+        dbg!("added aabb");
     }
 }
 
@@ -86,11 +93,12 @@ pub fn sys_add_names_ui(
 ) {
     for (entity, name) in name_added.iter() {
         commands.spawn((
-            NameUI {
-                target: entity,
-            },
+            NameUI { target: entity },
             MultiplayerUIWidget,
-            widgets::text(name.0.clone()),
+            widgets::text(name.0.clone()).with_style(Style {
+                display: Display::None,
+                ..default()
+            }),
         ));
     }
 }
@@ -110,8 +118,17 @@ pub fn sys_render_names_ui(
             ) {
                 text_style.left = Val::Px(coords.x - (text_layout.logical_size.x / 2.));
                 text_style.top = Val::Px(coords.y);
+                text_style.display = Display::Flex;
             }
-        } 
+        }
+    }
+}
+
+pub fn sys_clear_invalid_names_ui(mut commands: Commands, has_name_ui: Query<(Entity, &NameUI)>) {
+    for (name_entity, name) in has_name_ui.iter() {
+        if commands.get_entity(name.target).is_none() {
+            commands.entity(name_entity).despawn_recursive();
+        }
     }
 }
 
