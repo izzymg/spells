@@ -1,4 +1,4 @@
-use crate::ui::widgets;
+use crate::{input, ui::widgets};
 use bevy::{log, prelude::*};
 use lib_spells::shared;
 
@@ -8,6 +8,7 @@ const NAME_UI_GAP: f32 = 0.2;
 pub struct GameplayUIWidget;
 #[derive(Component, Debug)]
 pub struct CastingSpellText(Entity);
+
 #[derive(Component, Debug)]
 pub struct PlayerUnitFrame;
 #[derive(Component, Debug)]
@@ -18,6 +19,57 @@ pub struct UnitFrameHealthText;
 pub struct UnitFrameNameText;
 #[derive(Component, Debug)]
 pub struct UnitFrame;
+
+#[derive(Default, Debug)]
+pub struct TabTargetIndex(Option<usize>);
+
+#[derive(Component, Debug, Default)]
+pub struct UITarget;
+
+pub fn sys_tab_target(
+    is_target: Query<Entity, With<UITarget>>,
+    mut commands: Commands,
+    buttons: Res<input::ActionButtons>,
+    are_targettable: Query<Entity, With<shared::Name>>,
+    mut tab_target_index: Local<TabTargetIndex>,
+) {
+    if buttons.get_button_state(input::Action::Target) != input::ButtonState::Pressed {
+        return;
+    }
+
+    // get a sorted list of every targetable entity 
+    let mut entity_list = are_targettable.iter().collect::<Vec<Entity>>();
+    if entity_list.is_empty() {
+        tab_target_index.0 = None;
+        return;
+    }
+    entity_list.sort();
+
+    // pick the next entity or wrap around to the start
+    let next_index = match tab_target_index.0 {
+        Some(i) => i + 1,
+        None => 0,
+    };
+
+    let target = match entity_list.get(next_index) {
+       Some(target) => {
+           tab_target_index.0 = Some(next_index);
+           *target
+       }
+       None => {
+           tab_target_index.0 = Some(0);
+           entity_list[0]
+       }
+    };
+
+    // remove current target
+    if let Ok(current_target) = is_target.get_single() {
+        commands.entity(current_target).remove::<UITarget>();
+    }
+
+    // set new target
+    commands.entity(target).insert(UITarget);
+}
 
 fn unitframe(row: i16, col: i16) -> NodeBundle {
     let mut node = widgets::node();

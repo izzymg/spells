@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub enum Action {
     Jump,
     Activate,
+    Target,
     Primary,
     Secondary,
     Pause,
@@ -83,6 +84,7 @@ impl Default for InputButtonActionMap {
             (Input::KeyCode(KeyCode::Space), Action::Jump),
             (Input::KeyCode(KeyCode::Escape), Action::Pause),
             (Input::KeyCode(KeyCode::KeyE), Action::Activate),
+            (Input::KeyCode(KeyCode::Tab), Action::Target),
             (Input::MouseButton(MouseButton::Left), Action::Primary),
             (Input::MouseButton(MouseButton::Right), Action::Secondary),
         ]))
