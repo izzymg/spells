@@ -26,6 +26,7 @@ struct ServerPlayerBundle {
     pos: shared::Position,
     player: shared::Player,
     vel: shared::Velocity,
+    hp: shared::Health,
 }
 
 impl ServerPlayerBundle {
@@ -37,6 +38,7 @@ impl ServerPlayerBundle {
             pos: Default::default(),
             vel: Default::default(),
             player: Default::default(),
+            hp: shared::Health(100),
             name: shared::Name(format!("Player {}", token)),
         }
     }

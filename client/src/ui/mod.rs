@@ -1,7 +1,7 @@
 mod gameplay;
 pub mod widgets;
 
-use crate::window;
+use crate::{replication, window};
 use bevy::prelude::*;
 
 pub struct UiPlugin;
@@ -9,11 +9,25 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             OnEnter(window::WindowContext::Play),
-            (gameplay::sys_create_layout, gameplay::sys_add_unitframes).chain(),
+            (
+                gameplay::sys_create_layout,
+                gameplay::sys_add_unitframes,
+                gameplay::sys_setup_unitframes,
+            )
+                .chain(),
         );
         app.add_systems(
             Update,
             (
+                gameplay::sys_render_unitframe_health::<
+                    gameplay::PlayerUnitFrame,
+                    replication::PredictedPlayer,
+                >,
+                gameplay::sys_render_unitframe_name::<
+                    gameplay::PlayerUnitFrame,
+                    replication::PredictedPlayer,
+                >,
+
                 (
                     gameplay::sys_add_casting_ui,
                     gameplay::sys_render_casters_ui,

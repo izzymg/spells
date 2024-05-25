@@ -5,13 +5,19 @@ use lib_spells::shared;
 const NAME_UI_GAP: f32 = 0.2;
 
 #[derive(Component)]
-pub struct MultiplayerUIWidget;
+pub struct GameplayUIWidget;
 #[derive(Component, Debug)]
 pub struct CastingSpellText(Entity);
 #[derive(Component, Debug)]
-pub struct LayoutPlayerFrameNode;
+pub struct PlayerUnitFrame;
 #[derive(Component, Debug)]
-pub struct LayoutTargetFrameNode;
+pub struct TargetUnitFrame;
+#[derive(Component, Debug)]
+pub struct UnitFrameHealthText;
+#[derive(Component, Debug)]
+pub struct UnitFrameNameText;
+#[derive(Component, Debug)]
+pub struct UnitFrame;
 
 fn unitframe(row: i16, col: i16) -> NodeBundle {
     let mut node = widgets::node();
@@ -25,7 +31,7 @@ fn unitframe(row: i16, col: i16) -> NodeBundle {
 }
 
 pub fn sys_create_layout(mut commands: Commands) {
-    commands.spawn((MultiplayerUIWidget, widgets::game_layout()));
+    commands.spawn((GameplayUIWidget, widgets::game_layout()));
 }
 
 pub fn sys_add_unitframes(
@@ -34,10 +40,20 @@ pub fn sys_add_unitframes(
 ) {
     let layout_entity = has_game_ui.single();
     let player_unitframe = commands
-        .spawn((MultiplayerUIWidget, LayoutPlayerFrameNode, unitframe(4, 2)))
+        .spawn((
+            GameplayUIWidget,
+            UnitFrame,
+            PlayerUnitFrame,
+            unitframe(4, 2),
+        ))
         .id();
     let target_unitframe = commands
-        .spawn((MultiplayerUIWidget, LayoutPlayerFrameNode, unitframe(4, 5)))
+        .spawn((
+            GameplayUIWidget,
+            UnitFrame,
+            TargetUnitFrame,
+            unitframe(4, 5),
+        ))
         .id();
 
     commands
@@ -45,6 +61,70 @@ pub fn sys_add_unitframes(
         .insert_children(2, &[player_unitframe, target_unitframe]);
 }
 
+pub fn sys_setup_unitframes(
+    mut commands: Commands,
+    added_unitframe: Query<Entity, Added<UnitFrame>>,
+) {
+    for unitframe in added_unitframe.iter() {
+        let name_text = commands
+            .spawn((
+                GameplayUIWidget,
+                UnitFrameNameText,
+                widgets::text("NONE".into()),
+            ))
+            .id();
+        let hp_text = commands
+            .spawn((
+                GameplayUIWidget,
+                UnitFrameHealthText,
+                widgets::text("NONE".into()),
+            ))
+            .id();
+
+        commands
+            .entity(unitframe)
+            .insert_children(2, &[name_text, hp_text]);
+    }
+}
+
+pub fn sys_render_unitframe_health<F: Component, E: Component>(
+    is_unitframe_children: Query<&Children, With<F>>,
+    is_tracked_health: Query<&shared::Health, With<E>>,
+    mut has_unitframe_health_text: Query<&mut Text, With<UnitFrameHealthText>>,
+) {
+    let hp = match is_tracked_health.get_single() {
+        Ok(hp) => hp.0,
+        Err(err) => match err {
+            bevy::ecs::query::QuerySingleError::NoEntities(_) => return,
+            bevy::ecs::query::QuerySingleError::MultipleEntities(_) => {
+                panic!("attempted to render unitframe for query that returned multiple entities.");
+            }
+        },
+    };
+    let unitframe_children = is_unitframe_children.single();
+    let mut iter = has_unitframe_health_text.iter_many_mut(unitframe_children);
+    iter.fetch_next().unwrap().sections[0].value = format!("{} HP", hp);
+}
+
+pub fn sys_render_unitframe_name<F: Component, E: Component>(
+    is_unitframe_children: Query<&Children, With<F>>,
+    is_tracked_name: Query<&shared::Name, With<E>>,
+    mut has_unitframe_name_text: Query<&mut Text, With<UnitFrameNameText>>,
+) {
+    let name = match is_tracked_name.get_single() {
+        Ok(name) => &name.0,
+        Err(err) => match err {
+            bevy::ecs::query::QuerySingleError::NoEntities(_) => return,
+            bevy::ecs::query::QuerySingleError::MultipleEntities(_) => {
+                panic!("attempted to render unitframe for query that returned multiple entities.");
+            }
+        },
+    };
+
+    let unitframe_children = is_unitframe_children.single();
+    let mut iter = has_unitframe_name_text.iter_many_mut(unitframe_children);
+    iter.fetch_next().unwrap().sections[0].value = name.clone();
+}
 /// Add the child text entity & tag it when something is casting if there's no text already.
 pub fn sys_add_casting_ui(
     mut commands: Commands,
@@ -62,7 +142,7 @@ pub fn sys_add_casting_ui(
         }
 
         commands.spawn((
-            MultiplayerUIWidget,
+            GameplayUIWidget,
             widgets::text("0".into()),
             CastingSpellText(caster_entity),
         ));
@@ -105,7 +185,6 @@ pub fn sys_add_aabb(
                 .half_extents
                 .into(),
         });
-        dbg!("added aabb");
     }
 }
 
@@ -121,7 +200,7 @@ pub fn sys_add_names_ui(
     for (entity, name) in name_added.iter() {
         commands.spawn((
             NameUI { target: entity },
-            MultiplayerUIWidget,
+            GameplayUIWidget,
             widgets::text(name.0.clone()).with_style(Style {
                 display: Display::None,
                 ..default()
@@ -160,7 +239,7 @@ pub fn sys_clear_invalid_names_ui(mut commands: Commands, has_name_ui: Query<(En
 }
 
 pub fn sys_cleanup(
-    has_multiplayer_ui: Query<Entity, With<MultiplayerUIWidget>>,
+    has_multiplayer_ui: Query<Entity, With<GameplayUIWidget>>,
     mut commands: Commands,
 ) {
     for entity in has_multiplayer_ui.iter() {
