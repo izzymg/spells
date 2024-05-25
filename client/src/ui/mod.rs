@@ -37,6 +37,10 @@ impl Plugin for UiPlugin {
                             gameplay::TargetUnitFrame,
                             gameplay::UITarget,
                         >,
+                        gameplay::sys_render_unitframe_health::<
+                            gameplay::TargetUnitFrame,
+                            gameplay::UITarget,
+                        >,
                     ),
                 )
                     .chain(),
