@@ -27,17 +27,17 @@ pub struct TabTargetIndex(Option<usize>);
 pub struct UITarget;
 
 pub fn sys_tab_target(
-    is_target: Query<Entity, With<UITarget>>,
     mut commands: Commands,
     buttons: Res<input::ActionButtons>,
     are_targettable: Query<Entity, With<shared::Name>>,
     mut tab_target_index: Local<TabTargetIndex>,
+    is_target: Query<Entity, With<UITarget>>,
 ) {
     if buttons.get_button_state(input::Action::Target) != input::ButtonState::Pressed {
         return;
     }
 
-    // get a sorted list of every targetable entity 
+    // get a sorted list of every targetable entity
     let mut entity_list = are_targettable.iter().collect::<Vec<Entity>>();
     if entity_list.is_empty() {
         tab_target_index.0 = None;
@@ -52,22 +52,20 @@ pub fn sys_tab_target(
     };
 
     let target = match entity_list.get(next_index) {
-       Some(target) => {
-           tab_target_index.0 = Some(next_index);
-           *target
-       }
-       None => {
-           tab_target_index.0 = Some(0);
-           entity_list[0]
-       }
+        Some(target) => {
+            tab_target_index.0 = Some(next_index);
+            *target
+        }
+        None => {
+            tab_target_index.0 = Some(0);
+            entity_list[0]
+        }
     };
 
-    // remove current target
+    // swap to new target
     if let Ok(current_target) = is_target.get_single() {
         commands.entity(current_target).remove::<UITarget>();
     }
-
-    // set new target
     commands.entity(target).insert(UITarget);
 }
 
@@ -144,18 +142,22 @@ pub fn sys_render_unitframe_health<F: Component, E: Component>(
     is_tracked_health: Query<&shared::Health, With<E>>,
     mut has_unitframe_health_text: Query<&mut Text, With<UnitFrameHealthText>>,
 ) {
+    let unitframe_children = is_unitframe_children.single();
+    let mut iter = has_unitframe_health_text.iter_many_mut(unitframe_children);
+    let mut text = iter.fetch_next().unwrap();
     let hp = match is_tracked_health.get_single() {
         Ok(hp) => hp.0,
         Err(err) => match err {
-            bevy::ecs::query::QuerySingleError::NoEntities(_) => return,
+            bevy::ecs::query::QuerySingleError::NoEntities(_) => {
+                text.sections[0].value = "None".to_string();
+                return;
+            }
             bevy::ecs::query::QuerySingleError::MultipleEntities(_) => {
                 panic!("attempted to render unitframe for query that returned multiple entities.");
             }
         },
     };
-    let unitframe_children = is_unitframe_children.single();
-    let mut iter = has_unitframe_health_text.iter_many_mut(unitframe_children);
-    iter.fetch_next().unwrap().sections[0].value = format!("{} HP", hp);
+    text.sections[0].value = format!("{} HP", hp);
 }
 
 pub fn sys_render_unitframe_name<F: Component, E: Component>(
@@ -163,19 +165,22 @@ pub fn sys_render_unitframe_name<F: Component, E: Component>(
     is_tracked_name: Query<&shared::Name, With<E>>,
     mut has_unitframe_name_text: Query<&mut Text, With<UnitFrameNameText>>,
 ) {
+    let unitframe_children = is_unitframe_children.single();
+    let mut iter = has_unitframe_name_text.iter_many_mut(unitframe_children);
+    let mut text = iter.fetch_next().unwrap();
     let name = match is_tracked_name.get_single() {
         Ok(name) => &name.0,
         Err(err) => match err {
-            bevy::ecs::query::QuerySingleError::NoEntities(_) => return,
+            bevy::ecs::query::QuerySingleError::NoEntities(_) => {
+                text.sections[0].value = "None".to_string();
+                return;
+            }
             bevy::ecs::query::QuerySingleError::MultipleEntities(_) => {
                 panic!("attempted to render unitframe for query that returned multiple entities.");
             }
         },
     };
-
-    let unitframe_children = is_unitframe_children.single();
-    let mut iter = has_unitframe_name_text.iter_many_mut(unitframe_children);
-    iter.fetch_next().unwrap().sections[0].value = name.clone();
+    text.sections[0].value = name.clone();
 }
 /// Add the child text entity & tag it when something is casting if there's no text already.
 pub fn sys_add_casting_ui(

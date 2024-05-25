@@ -19,22 +19,27 @@ impl Plugin for UiPlugin {
         app.add_systems(
             Update,
             (
-                gameplay::sys_tab_target,
-
-                // player unitframe
-                gameplay::sys_render_unitframe_health::<
-                    gameplay::PlayerUnitFrame,
-                    replication::PredictedPlayer,
-                >,
-                gameplay::sys_render_unitframe_name::<
-                    gameplay::PlayerUnitFrame,
-                    replication::PredictedPlayer,
-                >,
-                // target unitframe
-                gameplay::sys_render_unitframe_name::<
-                    gameplay::TargetUnitFrame,
-                    gameplay::UITarget,
-                >,
+                (
+                    // target > unitframe rendering
+                    gameplay::sys_tab_target,
+                    (
+                        // player unitframe
+                        gameplay::sys_render_unitframe_health::<
+                            gameplay::PlayerUnitFrame,
+                            replication::PredictedPlayer,
+                        >,
+                        gameplay::sys_render_unitframe_name::<
+                            gameplay::PlayerUnitFrame,
+                            replication::PredictedPlayer,
+                        >,
+                        // target unitframe
+                        gameplay::sys_render_unitframe_name::<
+                            gameplay::TargetUnitFrame,
+                            gameplay::UITarget,
+                        >,
+                    ),
+                )
+                    .chain(),
                 (
                     gameplay::sys_add_casting_ui,
                     gameplay::sys_render_casters_ui,
