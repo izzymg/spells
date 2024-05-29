@@ -20,6 +20,8 @@ impl Plugin for UiPlugin {
             Update,
             (
                 (
+                    // this really shouldn't be here
+                    gameplay::sys_add_aabb,
                     // target > unitframe rendering
                     gameplay::sys_tab_target,
                     (
@@ -44,13 +46,14 @@ impl Plugin for UiPlugin {
                     ),
                 )
                     .chain(),
+                // casting
                 (
                     gameplay::sys_add_casting_ui,
                     gameplay::sys_render_casters_ui,
                 )
                     .chain(),
+                // name rendering
                 (
-                    gameplay::sys_add_aabb,
                     gameplay::sys_render_names_ui,
                     gameplay::sys_add_names_ui,
                     gameplay::sys_clear_invalid_names_ui,
