@@ -1,11 +1,10 @@
 /*! Replicates world state into the game world */
 
+mod entity_mapping;
+
 use crate::{controls::wish_dir, events, world_connection, SystemSets};
 use bevy::{
-    ecs::{
-        entity::{EntityHashMap, MapEntities},
-        system::SystemParam,
-    },
+    ecs::{entity::MapEntities, system::SystemParam},
     log,
     prelude::*,
 };
@@ -23,24 +22,13 @@ pub struct Replicated;
 #[derive(Component, Debug, Default)]
 pub struct PredictedPlayer;
 
-/// Maps World entities to Game entities
-#[derive(Resource, Debug, Default)]
-struct WorldToGameMapper(EntityHashMap<Entity>);
-
-impl EntityMapper for WorldToGameMapper {
-    fn map_entity(&mut self, entity: Entity) -> Entity {
-        // todo: this could crash
-        self.0.get(&entity).copied().unwrap()
-    }
-}
-
 #[derive(Component, Debug, Default)]
 struct LastVelocityChange(Option<Duration>);
 
 #[derive(SystemParam)]
 struct ReplicationSys<'w, 's> {
     commands: Commands<'w, 's>,
-    world_to_game: ResMut<'w, WorldToGameMapper>,
+    entity_map: ResMut<'w, entity_mapping::EntityMap>,
     replication_completed_ev: ResMut<'w, Events<events::ReplicationCompleted>>,
     replicated_query: Query<'w, 's, Entity, With<Replicated>>,
 }
@@ -52,13 +40,12 @@ struct ReplicatedObjectBundle {
 }
 
 impl<'w, 's> ReplicationSys<'w, 's> {
-
     /// Clear all replicated objects & the world to game state
     fn destroy(&mut self) {
         for entity in self.replicated_query.iter() {
             self.commands.entity(entity).despawn_recursive();
         }
-        self.world_to_game.0.clear();
+        self.entity_map.clear();
     }
 
     fn update_world_entity(
@@ -66,8 +53,8 @@ impl<'w, 's> ReplicationSys<'w, 's> {
         world_entity: Entity,
         mut state: lib_spells::net::EntityState,
     ) {
-        let game_entity = *self.world_to_game.0.get(&world_entity).unwrap();
-        state.map_entities(self.world_to_game.as_mut());
+        let game_entity = self.entity_map.get_game_entity(world_entity).unwrap();
+        state.map_entities(self.entity_map.world_to_game());
         self.commands.add(lib_spells::net::AddEntityStateCommand {
             entity: game_entity,
             entity_state: state,
@@ -76,42 +63,29 @@ impl<'w, 's> ReplicationSys<'w, 's> {
 
     fn spawn_world_entity(&mut self, world_entity: Entity) -> Entity {
         let game_entity = self.commands.spawn(ReplicatedObjectBundle::default()).id();
-        self.world_to_game.0.insert(world_entity, game_entity);
-        log::debug!(
-            "spawned world entity {:?} -> {:?}",
-            world_entity,
-            game_entity
-        );
+        self.entity_map.map(world_entity, game_entity);
         game_entity
     }
 
     fn despawn_world_entity(&mut self, world_entity: Entity) {
-        let game_entity = self.world_to_game.0.remove(&world_entity).unwrap();
+        let game_entity = self.entity_map.unmap_from_world(world_entity);
         self.commands.entity(game_entity).despawn_recursive();
-        log::debug!("despawned world entity {:?}", world_entity);
     }
 
     fn has_world_entity(&self, world_entity: Entity) -> bool {
-        self.world_to_game.0.contains_key(&world_entity)
+        self.entity_map.world_entity_is_mapped(world_entity)
     }
 
-    fn replicate_state(&mut self, mut state: lib_spells::net::WorldState, server_player_entity: Entity) {
+    fn replicate_state(
+        &mut self,
+        mut state: lib_spells::net::WorldState,
+        server_player_entity: Entity,
+    ) {
         // find entities we're tracking that don't exist in this state, and kill them
-        let lost = self
-            .world_to_game
-            .0
-            .iter()
-            .filter_map(|(world_entity, _)| {
-                state
-                    .entity_state_map
-                    .get(world_entity)
-                    .is_none()
-                    .then_some(world_entity)
-            })
-            .copied()
-            .collect::<Vec<Entity>>();
+        let mapped_world_entities = self.entity_map.collect_world();
+        let lost = mapped_world_entities.iter().filter(|world| !state.entity_state_map.contains_key(world));
         for entity in lost {
-            self.despawn_world_entity(entity);
+            self.despawn_world_entity(*entity);
         }
 
         for (world_entity, state) in state.entity_state_map.drain() {
@@ -320,8 +294,8 @@ pub struct ReplicationPlugin;
 
 impl Plugin for ReplicationPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(entity_mapping::EntityMappingPlugin);
         app.insert_resource(InputCache::default());
-        app.insert_resource(WorldToGameMapper::default());
         app.add_systems(
             Update,
             (
